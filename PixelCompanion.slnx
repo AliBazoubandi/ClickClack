@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="PixelCompanion.Tests/PixelCompanion.Tests.csproj" />
+  <Project Path="PixelCompanion/PixelCompanion.csproj" />
+</Solution>
