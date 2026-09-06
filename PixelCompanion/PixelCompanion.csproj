@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationIcon>Assets\Icons\app.ico</ApplicationIcon>
+    <AssemblyName>ClickClack</AssemblyName>
+    <Product>ClickClack</Product>
+    <Title>ClickClack</Title>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\**\*.png" />
+    <Resource Include="Assets\**\*.ico" />
+  </ItemGroup>
+
+</Project>
