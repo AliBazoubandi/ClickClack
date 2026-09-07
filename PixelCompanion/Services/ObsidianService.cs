@@ -21,7 +21,7 @@ public class ObsidianService : IDisposable
     private readonly ObsidianTaskParser _parser;
     private FileSystemWatcher? _watcher;
     private System.Threading.Timer? _debounceTimer;
-    private bool _isSelfWriting;
+    private int _selfWritingCount;
     private string? _currentDailyNotePath;
 
     public event Action? TasksChanged;
@@ -30,7 +30,7 @@ public class ObsidianService : IDisposable
     public string StatusMessage { get; private set; } = string.Empty;
     public string? CurrentDailyNotePath => _currentDailyNotePath;
 
-    private bool IsSelfWriting => _isSelfWriting;
+    private bool IsSelfWriting => Volatile.Read(ref _selfWritingCount) > 0;
 
     public ObsidianService(ConfigService configService, AppConfig config)
     {
@@ -159,7 +159,33 @@ public class ObsidianService : IDisposable
             {
                 string dateString = DateFormatHelper.FormatDate(_config.DailyNoteDateFormat, DateTime.Now);
                 var initialLines = new[] { $"# {dateString}", string.Empty };
-                SafeWriteLinesAtomicAsync(targetFilePath, initialLines).GetAwaiter().GetResult();
+                SafeWriteLinesAtomic(targetFilePath, initialLines);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to create daily note file: {ex.Message}");
+            }
+        }
+
+        _currentDailyNotePath = targetFilePath;
+        return targetFilePath;
+    }
+
+    public async Task<string?> EnsureDailyNoteFileExistsAsync()
+    {
+        string? targetFilePath = PrepareDailyNotePath();
+        if (targetFilePath == null)
+        {
+            return null;
+        }
+
+        if (!File.Exists(targetFilePath))
+        {
+            try
+            {
+                string dateString = DateFormatHelper.FormatDate(_config.DailyNoteDateFormat, DateTime.Now);
+                var initialLines = new[] { $"# {dateString}", string.Empty };
+                await SafeWriteLinesAtomicAsync(targetFilePath, initialLines);
             }
             catch (Exception ex)
             {
@@ -297,7 +323,32 @@ public class ObsidianService : IDisposable
         return firstMatchIndex;
     }
 
-    private async Task<bool> SafeWriteLinesAtomicAsync(string targetFilePath, IEnumerable<string> lines)
+    public static Encoding DetectEncoding(string filePath)
+    {
+        if (File.Exists(filePath))
+        {
+            try
+            {
+                using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                if (fs.Length >= 3)
+                {
+                    byte[] bom = new byte[3];
+                    int read = fs.Read(bom, 0, 3);
+                    if (read == 3 && bom[0] == 0xEF && bom[1] == 0xBB && bom[2] == 0xBF)
+                    {
+                        return new UTF8Encoding(true);
+                    }
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        return new UTF8Encoding(false);
+    }
+
+    private bool SafeWriteLinesAtomic(string targetFilePath, IEnumerable<string> lines, Encoding? encoding = null)
     {
         string? targetDir = Path.GetDirectoryName(targetFilePath);
         if (string.IsNullOrWhiteSpace(targetDir) || !Directory.Exists(targetDir))
@@ -309,8 +360,77 @@ public class ObsidianService : IDisposable
 
         try
         {
+            var enc = encoding ?? DetectEncoding(targetFilePath);
             using (var writeStream = new FileStream(tempFilePath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-            using (var writer = new StreamWriter(writeStream, new UTF8Encoding(false)))
+            using (var writer = new StreamWriter(writeStream, enc))
+            {
+                foreach (var line in lines)
+                {
+                    writer.WriteLine(line);
+                }
+            }
+
+            if (File.Exists(targetFilePath))
+            {
+                try
+                {
+                    File.Replace(tempFilePath, targetFilePath, null, ignoreMetadataErrors: true);
+                    return true;
+                }
+                catch (PlatformNotSupportedException)
+                {
+                    File.Move(tempFilePath, targetFilePath, overwrite: true);
+                    return true;
+                }
+                catch (IOException ioEx)
+                {
+                    System.Diagnostics.Debug.WriteLine($"File.Replace fallback: {ioEx.Message}");
+                    File.Move(tempFilePath, targetFilePath, overwrite: true);
+                    return true;
+                }
+            }
+            else
+            {
+                File.Move(tempFilePath, targetFilePath);
+                return true;
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"SafeWriteLinesAtomic failed for target {Path.GetFileName(targetFilePath)}: {ex.Message}");
+            return false;
+        }
+        finally
+        {
+            if (File.Exists(tempFilePath))
+            {
+                try
+                {
+                    File.Delete(tempFilePath);
+                }
+                catch (Exception cleanupEx)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Failed to delete temp file {Path.GetFileName(tempFilePath)}: {cleanupEx.Message}");
+                }
+            }
+        }
+    }
+
+    private async Task<bool> SafeWriteLinesAtomicAsync(string targetFilePath, IEnumerable<string> lines, Encoding? encoding = null)
+    {
+        string? targetDir = Path.GetDirectoryName(targetFilePath);
+        if (string.IsNullOrWhiteSpace(targetDir) || !Directory.Exists(targetDir))
+        {
+            return false;
+        }
+
+        string tempFilePath = Path.Combine(targetDir, $".tmp_{Guid.NewGuid():N}.tmp");
+
+        try
+        {
+            var enc = encoding ?? DetectEncoding(targetFilePath);
+            using (var writeStream = new FileStream(tempFilePath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            using (var writer = new StreamWriter(writeStream, enc))
             {
                 foreach (var line in lines)
                 {
@@ -366,19 +486,20 @@ public class ObsidianService : IDisposable
 
     public async Task<bool> SetTaskCompletionAsync(ObsidianTask task, bool targetState)
     {
-        var filePath = EnsureDailyNoteFileExists();
+        var filePath = await EnsureDailyNoteFileExistsAsync();
         if (filePath == null || !File.Exists(filePath))
         {
+            Status = VaultStatus.Error;
+            StatusMessage = "Couldn't save your task to the daily note.";
             return false;
         }
 
+        Interlocked.Increment(ref _selfWritingCount);
         try
         {
-            _isSelfWriting = true;
-
             var lines = new List<string>();
             using (var fileStream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
-            using (var reader = new StreamReader(fileStream, Encoding.UTF8))
+            using (var reader = new StreamReader(fileStream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true))
             {
                 while (await reader.ReadLineAsync() is { } line)
                 {
@@ -392,23 +513,31 @@ public class ObsidianService : IDisposable
             {
                 lines[targetIndex] = _parser.BuildToggledLine(task, targetState);
 
-                bool writeSuccess = await SafeWriteLinesAtomicAsync(filePath, lines);
+                var encoding = DetectEncoding(filePath);
+                bool writeSuccess = await SafeWriteLinesAtomicAsync(filePath, lines, encoding);
                 if (writeSuccess)
                 {
                     task.IsCompleted = targetState;
                     task.RawLine = lines[targetIndex];
+                    Status = VaultStatus.Loaded;
+                    StatusMessage = string.Empty;
                     return true;
                 }
             }
+
+            Status = VaultStatus.Error;
+            StatusMessage = "Couldn't save your task to the daily note.";
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"Failed to write task update: {ex.Message}");
+            Status = VaultStatus.Error;
+            StatusMessage = "Couldn't save your task to the daily note.";
         }
         finally
         {
             await Task.Delay(400);
-            _isSelfWriting = false;
+            Interlocked.Decrement(ref _selfWritingCount);
         }
 
         return false;
@@ -421,19 +550,20 @@ public class ObsidianService : IDisposable
             return false;
         }
 
-        var filePath = EnsureDailyNoteFileExists();
+        var filePath = await EnsureDailyNoteFileExistsAsync();
         if (filePath == null || !File.Exists(filePath))
         {
+            Status = VaultStatus.Error;
+            StatusMessage = "Couldn't save your task to the daily note.";
             return false;
         }
 
+        Interlocked.Increment(ref _selfWritingCount);
         try
         {
-            _isSelfWriting = true;
-
             var lines = new List<string>();
             using (var fileStream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
-            using (var reader = new StreamReader(fileStream, Encoding.UTF8))
+            using (var reader = new StreamReader(fileStream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true))
             {
                 while (await reader.ReadLineAsync() is { } line)
                 {
@@ -444,41 +574,49 @@ public class ObsidianService : IDisposable
             var newLine = _parser.BuildNewTaskLine(taskText);
             lines.Add(newLine);
 
-            bool writeSuccess = await SafeWriteLinesAtomicAsync(filePath, lines);
+            var encoding = DetectEncoding(filePath);
+            bool writeSuccess = await SafeWriteLinesAtomicAsync(filePath, lines, encoding);
             if (writeSuccess)
             {
+                Status = VaultStatus.Loaded;
+                StatusMessage = string.Empty;
                 return true;
             }
 
+            Status = VaultStatus.Error;
+            StatusMessage = "Couldn't save your task to the daily note.";
             return false;
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"Failed to add task: {ex.Message}");
+            Status = VaultStatus.Error;
+            StatusMessage = "Couldn't save your task to the daily note.";
             return false;
         }
         finally
         {
             await Task.Delay(400);
-            _isSelfWriting = false;
+            Interlocked.Decrement(ref _selfWritingCount);
         }
     }
 
     public async Task<bool> DeleteTaskAsync(ObsidianTask task)
     {
-        var filePath = EnsureDailyNoteFileExists();
+        var filePath = await EnsureDailyNoteFileExistsAsync();
         if (filePath == null || !File.Exists(filePath))
         {
+            Status = VaultStatus.Error;
+            StatusMessage = "Couldn't save your task to the daily note.";
             return false;
         }
 
+        Interlocked.Increment(ref _selfWritingCount);
         try
         {
-            _isSelfWriting = true;
-
             var lines = new List<string>();
             using (var fileStream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
-            using (var reader = new StreamReader(fileStream, Encoding.UTF8))
+            using (var reader = new StreamReader(fileStream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true))
             {
                 while (await reader.ReadLineAsync() is { } line)
                 {
@@ -492,21 +630,29 @@ public class ObsidianService : IDisposable
             {
                 lines.RemoveAt(targetIndex);
 
-                bool writeSuccess = await SafeWriteLinesAtomicAsync(filePath, lines);
+                var encoding = DetectEncoding(filePath);
+                bool writeSuccess = await SafeWriteLinesAtomicAsync(filePath, lines, encoding);
                 if (writeSuccess)
                 {
+                    Status = VaultStatus.Loaded;
+                    StatusMessage = string.Empty;
                     return true;
                 }
             }
+
+            Status = VaultStatus.Error;
+            StatusMessage = "Couldn't save your task to the daily note.";
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"Failed to delete task: {ex.Message}");
+            Status = VaultStatus.Error;
+            StatusMessage = "Couldn't save your task to the daily note.";
         }
         finally
         {
             await Task.Delay(400);
-            _isSelfWriting = false;
+            Interlocked.Decrement(ref _selfWritingCount);
         }
 
         return false;

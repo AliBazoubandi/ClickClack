@@ -180,6 +180,16 @@ public class VisualRenderTests
                 encoder.Save(stream);
             }
 
+            // Assert that all three PNG files exist and are non-empty
+            Assert.IsTrue(File.Exists(mainPng), "rendered_main_window.png must exist");
+            Assert.IsGreaterThanOrEqualTo(1L, new FileInfo(mainPng).Length);
+
+            Assert.IsTrue(File.Exists(paperPng), "rendered_paper_window.png must exist");
+            Assert.IsGreaterThanOrEqualTo(1L, new FileInfo(paperPng).Length);
+
+            Assert.IsTrue(File.Exists(inputPng), "rendered_paper_window_input.png must exist");
+            Assert.IsGreaterThanOrEqualTo(1L, new FileInfo(inputPng).Length);
+
             // Cleanup
             obsidianService.Dispose();
             if (Directory.Exists(tempVault))

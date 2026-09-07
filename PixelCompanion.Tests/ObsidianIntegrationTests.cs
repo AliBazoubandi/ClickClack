@@ -1,4 +1,5 @@
 using System.IO;
+using System.Text;
 using PixelCompanion.Models;
 using PixelCompanion.Services;
 using PixelCompanion.ViewModels;
@@ -452,5 +453,105 @@ public class ObsidianIntegrationTests
         // Fresh install must have null/empty ObsidianVaultPath
         Assert.IsNull(config.ObsidianVaultPath);
         Assert.AreEqual("Task-Manager", config.DailyNotesFolder);
+    }
+
+    [TestMethod]
+    public async Task ObsidianService_SurfaceWriteFailure_WhenFileIsLocked()
+    {
+        var tempVault = Path.Combine(Path.GetTempPath(), "WriteFailureVault_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var configService = new ConfigService();
+            var config = new AppConfig
+            {
+                ObsidianVaultPath = tempVault,
+                DailyNotesFolder = "Task-Manager",
+                DailyNoteDateFormat = "yyyy-MM-dd"
+            };
+
+            using var obsidianService = new ObsidianService(configService, config);
+            var notePath = obsidianService.EnsureDailyNoteFileExists();
+            Assert.IsNotNull(notePath);
+
+            var viewModel = new CompanionViewModel(configService, obsidianService, config);
+
+            // Add an initial task so we can attempt to toggle it
+            await obsidianService.AddTaskAsync("Locked File Test");
+            var tasks = obsidianService.GetTodayTasks();
+            Assert.HasCount(1, tasks);
+
+            // Lock the daily note exclusively with FileShare.None so replacing/writing will fail deterministically on Windows
+            using (var lockStream = new FileStream(notePath, FileMode.Open, FileAccess.Read, FileShare.None))
+            {
+                // Attempting to toggle task completion while file is locked
+                bool toggleResult = await viewModel.ToggleTaskAsync(tasks[0]);
+                Assert.IsFalse(toggleResult);
+
+                // Verify ObsidianService surfaced error status and friendly status message
+                Assert.AreEqual(VaultStatus.Error, obsidianService.Status);
+                Assert.AreEqual("Couldn't save your task to the daily note.", obsidianService.StatusMessage);
+
+                // Verify CompanionViewModel also received the status message
+                Assert.AreEqual("Couldn't save your task to the daily note.", viewModel.StatusMessage);
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(tempVault))
+            {
+                try { Directory.Delete(tempVault, true); } catch { }
+            }
+        }
+    }
+
+    [TestMethod]
+    public async Task ObsidianService_PreservesUtf8Bom_WhenPresent()
+    {
+        var tempVault = Path.Combine(Path.GetTempPath(), "BomTestVault_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var configService = new ConfigService();
+            var config = new AppConfig
+            {
+                ObsidianVaultPath = tempVault,
+                DailyNotesFolder = "Task-Manager",
+                DailyNoteDateFormat = "yyyy-MM-dd"
+            };
+
+            using var obsidianService = new ObsidianService(configService, config);
+            var notePath = obsidianService.EnsureDailyNoteFileExists();
+            Assert.IsNotNull(notePath);
+
+            // 1. Newly created daily note should be UTF-8 without BOM
+            byte[] initialBytes = await File.ReadAllBytesAsync(notePath);
+            bool hasInitialBom = initialBytes.Length >= 3 && initialBytes[0] == 0xEF && initialBytes[1] == 0xBB && initialBytes[2] == 0xBF;
+            Assert.IsFalse(hasInitialBom, "Newly created daily note should use standard UTF-8 without BOM");
+
+            // 2. Explicitly write content with UTF-8 BOM
+            var utf8BomEncoding = new UTF8Encoding(true);
+            await File.WriteAllTextAsync(notePath, "# Notes with BOM\n\n- [ ] Task with BOM\n", utf8BomEncoding);
+
+            byte[] writtenBytes = await File.ReadAllBytesAsync(notePath);
+            bool writtenHasBom = writtenBytes.Length >= 3 && writtenBytes[0] == 0xEF && writtenBytes[1] == 0xBB && writtenBytes[2] == 0xBF;
+            Assert.IsTrue(writtenHasBom, "Setup file must have UTF-8 BOM");
+
+            // 3. Toggle task completion via service
+            var tasks = obsidianService.GetTodayTasks();
+            Assert.HasCount(1, tasks);
+            bool toggleSuccess = await obsidianService.SetTaskCompletionAsync(tasks[0], true);
+            Assert.IsTrue(toggleSuccess);
+
+            // 4. Verify modified file preserved the UTF-8 BOM
+            byte[] afterToggleBytes = await File.ReadAllBytesAsync(notePath);
+            bool afterToggleHasBom = afterToggleBytes.Length >= 3 && afterToggleBytes[0] == 0xEF && afterToggleBytes[1] == 0xBB && afterToggleBytes[2] == 0xBF;
+            Assert.IsTrue(afterToggleHasBom, "Modified file must preserve the existing UTF-8 BOM");
+        }
+        finally
+        {
+            if (Directory.Exists(tempVault))
+            {
+                try { Directory.Delete(tempVault, true); } catch { }
+            }
+        }
     }
 }

@@ -333,10 +333,15 @@ public class CompanionViewModel : ViewModelBase
                 RefreshTasks();
                 return true;
             }
+            else
+            {
+                StatusMessage = _obsidianService.StatusMessage;
+            }
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"ToggleTaskAsync error: {ex.Message}");
+            StatusMessage = _obsidianService.StatusMessage;
         }
 
         return false;
@@ -379,10 +384,15 @@ public class CompanionViewModel : ViewModelBase
                 TypewriterImage = TwIdle;
                 return true;
             }
+            else
+            {
+                StatusMessage = _obsidianService.StatusMessage;
+            }
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"AddTaskAsync error: {ex.Message}");
+            StatusMessage = _obsidianService.StatusMessage;
         }
 
         return false;
@@ -415,10 +425,15 @@ public class CompanionViewModel : ViewModelBase
                 RefreshTasks();
                 return true;
             }
+            else
+            {
+                StatusMessage = _obsidianService.StatusMessage;
+            }
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"DeleteTaskAsync error: {ex.Message}");
+            StatusMessage = _obsidianService.StatusMessage;
         }
 
         return false;
