@@ -27,10 +27,10 @@ public class SettingsViewModel : ViewModelBase
         _config = config;
         _closeAction = closeAction;
 
-        _vaultPath = string.IsNullOrWhiteSpace(config.ObsidianVaultPath) ? @"E:\obsidian\work" : config.ObsidianVaultPath;
-        _dailyNotesFolder = string.IsNullOrWhiteSpace(config.DailyNotesFolder) ? "Task-Manger" : config.DailyNotesFolder;
+        _vaultPath = config.ObsidianVaultPath ?? string.Empty;
+        _dailyNotesFolder = string.IsNullOrWhiteSpace(config.DailyNotesFolder) ? "Task-Manager" : config.DailyNotesFolder;
         _dailyNoteDateFormat = string.IsNullOrWhiteSpace(config.DailyNoteDateFormat)
-            ? "yyyy-MM-dd"
+            ? DateFormatHelper.DefaultDateFormat
             : config.DailyNoteDateFormat;
 
         BrowseVaultCommand = new RelayCommand(OnBrowseVault);
@@ -66,15 +66,11 @@ public class SettingsViewModel : ViewModelBase
     {
         get
         {
-            try
+            if (DateFormatHelper.TryFormatDate(_dailyNoteDateFormat, DateTime.Now, out var formatted))
             {
-                var format = string.IsNullOrWhiteSpace(_dailyNoteDateFormat) ? "yyyy-MM-dd" : _dailyNoteDateFormat;
-                return $"{DateTime.Now.ToString(format)}.md";
+                return $"{formatted}.md";
             }
-            catch
-            {
-                return "Invalid date format";
-            }
+            return $"Invalid date format (falls back to {DateFormatHelper.DefaultDateFormat})";
         }
     }
 
@@ -104,9 +100,21 @@ public class SettingsViewModel : ViewModelBase
 
     private void OnSave()
     {
-        _config.ObsidianVaultPath = _vaultPath.Trim();
-        _config.DailyNotesFolder = _dailyNotesFolder.Trim();
-        _config.DailyNoteDateFormat = string.IsNullOrWhiteSpace(_dailyNoteDateFormat) ? "yyyy-MM-dd" : _dailyNoteDateFormat.Trim();
+        _config.ObsidianVaultPath = string.IsNullOrWhiteSpace(_vaultPath) ? null : _vaultPath.Trim();
+        _config.DailyNotesFolder = string.IsNullOrWhiteSpace(_dailyNotesFolder) ? "Task-Manager" : _dailyNotesFolder.Trim();
+
+        if (DateFormatHelper.IsValidDateFormat(_dailyNoteDateFormat))
+        {
+            _config.DailyNoteDateFormat = _dailyNoteDateFormat.Trim();
+        }
+        else
+        {
+            // Do not persist invalid format, keep previous valid value or fallback to yyyy-MM-dd
+            if (!DateFormatHelper.IsValidDateFormat(_config.DailyNoteDateFormat))
+            {
+                _config.DailyNoteDateFormat = DateFormatHelper.DefaultDateFormat;
+            }
+        }
 
         _configService.Save(_config);
         _obsidianService.SetupWatcher();

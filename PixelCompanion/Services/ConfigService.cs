@@ -36,11 +36,9 @@ public class ConfigService
                 var config = JsonSerializer.Deserialize<AppConfig>(json, JsonOptions);
                 if (config != null)
                 {
-                    // If vault path was empty or old test path, ensure it defaults to E:\obsidian\work
-                    if (string.IsNullOrWhiteSpace(config.ObsidianVaultPath) || config.ObsidianVaultPath.Contains("TestVault"))
+                    if (MigrateDailyNotesFolder(config))
                     {
-                        config.ObsidianVaultPath = @"E:\obsidian\work";
-                        config.DailyNotesFolder = "Task-Manger";
+                        Save(config);
                     }
                     return config;
                 }
@@ -52,6 +50,47 @@ public class ConfigService
         }
 
         return new AppConfig();
+    }
+
+    public bool MigrateDailyNotesFolder(AppConfig config)
+    {
+        if (string.Equals(config.DailyNotesFolder, "Task-Manger", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!string.IsNullOrWhiteSpace(config.ObsidianVaultPath) && Directory.Exists(config.ObsidianVaultPath))
+            {
+                string oldPath = Path.Combine(config.ObsidianVaultPath, config.DailyNotesFolder);
+                string newPath = Path.Combine(config.ObsidianVaultPath, "Task-Manager");
+
+                bool oldExists = Directory.Exists(oldPath);
+                bool newExists = Directory.Exists(newPath);
+
+                if (newExists)
+                {
+                    // Case B: New directory already exists
+                    config.DailyNotesFolder = "Task-Manager";
+                    return true;
+                }
+                else if (oldExists)
+                {
+                    // Case C: Legacy data must be preserved
+                    return false;
+                }
+                else
+                {
+                    // Case A: Neither exists
+                    config.DailyNotesFolder = "Task-Manager";
+                    return true;
+                }
+            }
+            else
+            {
+                // Case A: Vault path not set or directory missing
+                config.DailyNotesFolder = "Task-Manager";
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public void Save(AppConfig config)
@@ -72,7 +111,15 @@ public class ConfigService
         }
     }
 
-    public WindowBounds ValidateWindowBounds(double? savedLeft, double? savedTop, double? savedWidth, double? savedHeight)
+    public WindowBounds ValidateWindowBounds(
+        double? savedLeft,
+        double? savedTop,
+        double? savedWidth,
+        double? savedHeight,
+        double defaultWidth = 480,
+        double defaultHeight = 420,
+        double minWidth = 260,
+        double minHeight = 200)
     {
         var workArea = SystemParameters.WorkArea;
         var virtualLeft = SystemParameters.VirtualScreenLeft;
@@ -81,13 +128,11 @@ public class ConfigService
         var virtualHeight = SystemParameters.VirtualScreenHeight;
 
         // Size clamping
-        double minWidth = 260;
-        double minHeight = 200;
         double maxWidth = Math.Max(minWidth, workArea.Width);
         double maxHeight = Math.Max(minHeight, workArea.Height);
 
-        double width = savedWidth ?? 460;
-        double height = savedHeight ?? 360;
+        double width = savedWidth ?? defaultWidth;
+        double height = savedHeight ?? defaultHeight;
 
         width = Math.Clamp(width, minWidth, maxWidth);
         height = Math.Clamp(height, minHeight, maxHeight);

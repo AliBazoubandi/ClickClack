@@ -1,4 +1,6 @@
+using System.Threading;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using PixelCompanion.Models;
 using PixelCompanion.Services;
@@ -11,6 +13,7 @@ public partial class PaperWindow : Window
     private readonly ConfigService _configService;
     private readonly AppConfig _config;
     private readonly CompanionViewModel _viewModel;
+    private int _isCommitting;
 
     public PaperWindow(ConfigService configService, AppConfig config, CompanionViewModel viewModel)
     {
@@ -24,23 +27,28 @@ public partial class PaperWindow : Window
         Loaded += PaperWindow_Loaded;
         Closing += PaperWindow_Closing;
         LocationChanged += PaperWindow_LocationChanged;
+        SizeChanged += PaperWindow_SizeChanged;
         KeyDown += PaperWindow_KeyDown;
     }
 
     private void PaperWindow_Loaded(object sender, RoutedEventArgs e)
     {
-        if (_config.PaperWindowLeft.HasValue && _config.PaperWindowTop.HasValue)
-        {
-            Left = _config.PaperWindowLeft.Value;
-            Top = _config.PaperWindowTop.Value;
-        }
-        else
-        {
-            // Position near center-right of screen
-            var workArea = SystemParameters.WorkArea;
-            Left = workArea.Left + (workArea.Width - Width) / 2 + 100;
-            Top = workArea.Top + (workArea.Height - Height) / 2 - 50;
-        }
+        var bounds = _configService.ValidateWindowBounds(
+            _config.PaperWindowLeft,
+            _config.PaperWindowTop,
+            _config.PaperWindowWidth,
+            _config.PaperWindowHeight,
+            defaultWidth: 380,
+            defaultHeight: 520,
+            minWidth: 280,
+            minHeight: 360);
+
+        Left = bounds.Left;
+        Top = bounds.Top;
+        Width = bounds.Width;
+        Height = bounds.Height;
+
+        SaveCurrentBounds();
     }
 
     private void PaperWindow_LocationChanged(object? sender, EventArgs e)
@@ -53,10 +61,33 @@ public partial class PaperWindow : Window
         }
     }
 
+    private void PaperWindow_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (WindowState == WindowState.Normal)
+        {
+            _config.PaperWindowWidth = Width;
+            _config.PaperWindowHeight = Height;
+            _configService.Save(_config);
+        }
+    }
+
+    private void SaveCurrentBounds()
+    {
+        if (WindowState == WindowState.Normal)
+        {
+            _config.PaperWindowLeft = Left;
+            _config.PaperWindowTop = Top;
+            _config.PaperWindowWidth = Width;
+            _config.PaperWindowHeight = Height;
+            _configService.Save(_config);
+        }
+    }
+
     public bool AllowClose { get; set; }
 
     private void PaperWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
+        SaveCurrentBounds();
         if (!AllowClose)
         {
             // Cancel close and hide instead, so state is preserved
@@ -131,20 +162,56 @@ public partial class PaperWindow : Window
 
     private void PaperTaskInput_LostFocus(object sender, RoutedEventArgs e)
     {
+        var focused = FocusManager.GetFocusedElement(this) as DependencyObject;
+        if (focused != null)
+        {
+            if (IsChildOf(focused, ShowAddInputBtn) || IsToggleTaskElement(focused))
+            {
+                return;
+            }
+        }
+
         CommitAndFinishAddingTask();
     }
 
-    private void CommitAndFinishAddingTask()
+    private bool IsToggleTaskElement(DependencyObject? element)
     {
-        if (!string.IsNullOrWhiteSpace(_viewModel.NewTaskText))
+        while (element != null && element != this)
         {
-            if (_viewModel.AddTaskCommand.CanExecute(null))
+            if (element is System.Windows.Controls.Button btn && btn.Command == _viewModel.ToggleTaskCommand)
             {
-                _viewModel.AddTaskCommand.Execute(null);
+                return true;
             }
+            element = System.Windows.Media.VisualTreeHelper.GetParent(element);
         }
-        _viewModel.NewTaskText = string.Empty;
-        _viewModel.IsAddingTask = false;
+        return false;
+    }
+
+    private async void CommitAndFinishAddingTask()
+    {
+        if (Interlocked.CompareExchange(ref _isCommitting, 1, 0) != 0)
+        {
+            return;
+        }
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_viewModel.NewTaskText))
+            {
+                _viewModel.IsAddingTask = false;
+                return;
+            }
+
+            await _viewModel.AddTaskAsync();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"CommitAndFinishAddingTask error: {ex.Message}");
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _isCommitting, 0);
+        }
     }
 
     private void CloseButton_Click(object sender, RoutedEventArgs e)

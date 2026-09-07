@@ -4,11 +4,11 @@ public class AppConfig
 {
     public double? WindowLeft { get; set; }
     public double? WindowTop { get; set; }
-    public double? WindowWidth { get; set; } = 460;
-    public double? WindowHeight { get; set; } = 360;
+    public double? WindowWidth { get; set; } = 480;
+    public double? WindowHeight { get; set; } = 420;
     public bool AlwaysOnTop { get; set; } = true;
-    public string? ObsidianVaultPath { get; set; } = @"E:\obsidian\work";
-    public string DailyNotesFolder { get; set; } = "Task-Manger";
+    public string? ObsidianVaultPath { get; set; } = null;
+    public string DailyNotesFolder { get; set; } = "Task-Manager";
     public string DailyNoteDateFormat { get; set; } = "yyyy-MM-dd";
     public bool IsPaperExtended { get; set; } = false;
     public double? PaperWindowLeft { get; set; }

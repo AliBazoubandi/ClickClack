@@ -30,6 +30,8 @@ public class ObsidianService : IDisposable
     public string StatusMessage { get; private set; } = string.Empty;
     public string? CurrentDailyNotePath => _currentDailyNotePath;
 
+    private bool IsSelfWriting => _isSelfWriting;
+
     public ObsidianService(ConfigService configService, AppConfig config)
     {
         _configService = configService;
@@ -71,7 +73,9 @@ public class ObsidianService : IDisposable
 
             _watcher.Changed += OnFileChanged;
             _watcher.Created += OnFileChanged;
+            _watcher.Deleted += OnFileChanged;
             _watcher.Renamed += OnFileChanged;
+            _watcher.Error += OnWatcherError;
             _watcher.EnableRaisingEvents = true;
         }
         catch (Exception ex)
@@ -80,22 +84,35 @@ public class ObsidianService : IDisposable
         }
     }
 
+    private void OnWatcherError(object sender, ErrorEventArgs e)
+    {
+        System.Diagnostics.Debug.WriteLine($"FileSystemWatcher error: {e.GetException()?.Message}");
+        TriggerDebouncedRefresh();
+    }
+
     private void OnFileChanged(object sender, FileSystemEventArgs e)
     {
-        if (_isSelfWriting)
+        if (IsSelfWriting)
         {
             return;
         }
 
-        // Debounce notifications (400ms)
-        _debounceTimer?.Dispose();
-        _debounceTimer = new System.Threading.Timer(_ =>
+        TriggerDebouncedRefresh();
+    }
+
+    private void TriggerDebouncedRefresh()
+    {
+        // Debounce notifications (400ms) with atomic exchange to avoid timer race conditions
+        var newTimer = new System.Threading.Timer(_ =>
         {
             TasksChanged?.Invoke();
         }, null, 400, Timeout.Infinite);
+
+        var oldTimer = Interlocked.Exchange(ref _debounceTimer, newTimer);
+        oldTimer?.Dispose();
     }
 
-    public string? EnsureDailyNoteFileExists()
+    private string? PrepareDailyNotePath()
     {
         if (string.IsNullOrWhiteSpace(_config.ObsidianVaultPath))
         {
@@ -124,18 +141,25 @@ public class ObsidianService : IDisposable
             }
         }
 
-        string dateFormat = string.IsNullOrWhiteSpace(_config.DailyNoteDateFormat)
-            ? "yyyy-MM-dd"
-            : _config.DailyNoteDateFormat;
+        string dateString = DateFormatHelper.FormatDate(_config.DailyNoteDateFormat, DateTime.Now);
+        return Path.Combine(targetDir, $"{dateString}.md");
+    }
 
-        string dateString = DateTime.Now.ToString(dateFormat);
-        string targetFilePath = Path.Combine(targetDir, $"{dateString}.md");
+    public string? EnsureDailyNoteFileExists()
+    {
+        string? targetFilePath = PrepareDailyNotePath();
+        if (targetFilePath == null)
+        {
+            return null;
+        }
 
         if (!File.Exists(targetFilePath))
         {
             try
             {
-                File.WriteAllText(targetFilePath, $"# {dateString}\n\n", Encoding.UTF8);
+                string dateString = DateFormatHelper.FormatDate(_config.DailyNoteDateFormat, DateTime.Now);
+                var initialLines = new[] { $"# {dateString}", string.Empty };
+                SafeWriteLinesAtomicAsync(targetFilePath, initialLines).GetAwaiter().GetResult();
             }
             catch (Exception ex)
             {
@@ -156,20 +180,33 @@ public class ObsidianService : IDisposable
             return new List<ObsidianTask>();
         }
 
+        // Daily rollover check: compare currently watched note path with expected path for today
+        string dateString = DateFormatHelper.FormatDate(_config.DailyNoteDateFormat, DateTime.Now);
+        string expectedDir = _config.ObsidianVaultPath;
+        if (!string.IsNullOrWhiteSpace(_config.DailyNotesFolder))
+        {
+            expectedDir = Path.Combine(_config.ObsidianVaultPath, _config.DailyNotesFolder);
+        }
+        string expectedFilePath = Path.Combine(expectedDir, $"{dateString}.md");
+
+        if (_currentDailyNotePath != null && !string.Equals(_currentDailyNotePath, expectedFilePath, StringComparison.OrdinalIgnoreCase))
+        {
+            SetupWatcher();
+        }
+
         var filePath = EnsureDailyNoteFileExists();
 
         if (filePath == null || !File.Exists(filePath))
         {
             Status = VaultStatus.DailyNoteNotFound;
-            string dateStr = DateTime.Now.ToString(_config.DailyNoteDateFormat ?? "yyyy-MM-dd");
-            StatusMessage = $"Could not access daily note\n({dateStr}.md)";
+            StatusMessage = $"Could not access daily note\n({dateString}.md)";
             return new List<ObsidianTask>();
         }
 
         try
         {
             using var fileStream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-            using var reader = new StreamReader(fileStream, Encoding.UTF8);
+            using var reader = new StreamReader(fileStream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
 
             var lines = new List<string>();
             while (reader.ReadLine() is { } line)
@@ -200,6 +237,133 @@ public class ObsidianService : IDisposable
         }
     }
 
+    public int ResolveTargetIndex(IReadOnlyList<string> lines, ObsidianTask task)
+    {
+        // Fast path: LineIndex is within bounds and matches structured identity
+        if (task.LineIndex >= 0 && task.LineIndex < lines.Count)
+        {
+            if (_parser.TryParseTaskLine(lines[task.LineIndex], out var indent, out var marker, out _, out var text))
+            {
+                if (string.Equals(indent, task.Indent, StringComparison.Ordinal) &&
+                    string.Equals(marker, task.ListMarker, StringComparison.Ordinal) &&
+                    string.Equals(text, task.Text, StringComparison.Ordinal))
+                {
+                    return task.LineIndex;
+                }
+            }
+        }
+
+        // Fallback: Scan lines, match by structured identity and occurrence index
+        int currentOccurrence = 0;
+        int firstMatchIndex = -1;
+        int closestIndex = -1;
+        int minDistance = int.MaxValue;
+
+        for (int i = 0; i < lines.Count; i++)
+        {
+            if (_parser.TryParseTaskLine(lines[i], out var indent, out var marker, out _, out var text))
+            {
+                if (string.Equals(indent, task.Indent, StringComparison.Ordinal) &&
+                    string.Equals(marker, task.ListMarker, StringComparison.Ordinal) &&
+                    string.Equals(text, task.Text, StringComparison.Ordinal))
+                {
+                    if (firstMatchIndex == -1)
+                    {
+                        firstMatchIndex = i;
+                    }
+
+                    if (currentOccurrence == task.OccurrenceIndex)
+                    {
+                        return i;
+                    }
+
+                    int dist = Math.Abs(i - task.LineIndex);
+                    if (dist < minDistance)
+                    {
+                        minDistance = dist;
+                        closestIndex = i;
+                    }
+
+                    currentOccurrence++;
+                }
+            }
+        }
+
+        if (closestIndex >= 0)
+        {
+            return closestIndex;
+        }
+
+        return firstMatchIndex;
+    }
+
+    private async Task<bool> SafeWriteLinesAtomicAsync(string targetFilePath, IEnumerable<string> lines)
+    {
+        string? targetDir = Path.GetDirectoryName(targetFilePath);
+        if (string.IsNullOrWhiteSpace(targetDir) || !Directory.Exists(targetDir))
+        {
+            return false;
+        }
+
+        string tempFilePath = Path.Combine(targetDir, $".tmp_{Guid.NewGuid():N}.tmp");
+
+        try
+        {
+            using (var writeStream = new FileStream(tempFilePath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            using (var writer = new StreamWriter(writeStream, new UTF8Encoding(false)))
+            {
+                foreach (var line in lines)
+                {
+                    await writer.WriteLineAsync(line);
+                }
+            }
+
+            if (File.Exists(targetFilePath))
+            {
+                try
+                {
+                    File.Replace(tempFilePath, targetFilePath, null, ignoreMetadataErrors: true);
+                    return true;
+                }
+                catch (PlatformNotSupportedException)
+                {
+                    File.Move(tempFilePath, targetFilePath, overwrite: true);
+                    return true;
+                }
+                catch (IOException ioEx)
+                {
+                    System.Diagnostics.Debug.WriteLine($"File.Replace fallback: {ioEx.Message}");
+                    File.Move(tempFilePath, targetFilePath, overwrite: true);
+                    return true;
+                }
+            }
+            else
+            {
+                File.Move(tempFilePath, targetFilePath);
+                return true;
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"SafeWriteLinesAtomicAsync failed for target {Path.GetFileName(targetFilePath)}: {ex.Message}");
+            return false;
+        }
+        finally
+        {
+            if (File.Exists(tempFilePath))
+            {
+                try
+                {
+                    File.Delete(tempFilePath);
+                }
+                catch (Exception cleanupEx)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Failed to delete temp file {Path.GetFileName(tempFilePath)}: {cleanupEx.Message}");
+                }
+            }
+        }
+    }
+
     public async Task<bool> SetTaskCompletionAsync(ObsidianTask task, bool targetState)
     {
         var filePath = EnsureDailyNoteFileExists();
@@ -222,33 +386,19 @@ public class ObsidianService : IDisposable
                 }
             }
 
-            int targetIndex = -1;
+            int targetIndex = ResolveTargetIndex(lines, task);
 
-            if (task.LineIndex >= 0 && task.LineIndex < lines.Count && lines[task.LineIndex].Contains(task.Text))
-            {
-                targetIndex = task.LineIndex;
-            }
-            else
-            {
-                targetIndex = lines.FindIndex(l => l.Contains(task.Text));
-            }
-
-            if (targetIndex >= 0)
+            if (targetIndex >= 0 && targetIndex < lines.Count)
             {
                 lines[targetIndex] = _parser.BuildToggledLine(task, targetState);
 
-                using (var writeStream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.ReadWrite))
-                using (var writer = new StreamWriter(writeStream, Encoding.UTF8))
+                bool writeSuccess = await SafeWriteLinesAtomicAsync(filePath, lines);
+                if (writeSuccess)
                 {
-                    foreach (var line in lines)
-                    {
-                        await writer.WriteLineAsync(line);
-                    }
+                    task.IsCompleted = targetState;
+                    task.RawLine = lines[targetIndex];
+                    return true;
                 }
-
-                task.IsCompleted = targetState;
-                task.RawLine = lines[targetIndex];
-                return true;
             }
         }
         catch (Exception ex)
@@ -281,15 +431,26 @@ public class ObsidianService : IDisposable
         {
             _isSelfWriting = true;
 
-            var newLine = _parser.BuildNewTaskLine(taskText);
-
-            using (var writeStream = new FileStream(filePath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite))
-            using (var writer = new StreamWriter(writeStream, Encoding.UTF8))
+            var lines = new List<string>();
+            using (var fileStream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            using (var reader = new StreamReader(fileStream, Encoding.UTF8))
             {
-                await writer.WriteLineAsync(newLine);
+                while (await reader.ReadLineAsync() is { } line)
+                {
+                    lines.Add(line);
+                }
             }
 
-            return true;
+            var newLine = _parser.BuildNewTaskLine(taskText);
+            lines.Add(newLine);
+
+            bool writeSuccess = await SafeWriteLinesAtomicAsync(filePath, lines);
+            if (writeSuccess)
+            {
+                return true;
+            }
+
+            return false;
         }
         catch (Exception ex)
         {
@@ -325,30 +486,17 @@ public class ObsidianService : IDisposable
                 }
             }
 
-            int targetIndex = -1;
-            if (task.LineIndex >= 0 && task.LineIndex < lines.Count && lines[task.LineIndex].Contains(task.Text))
-            {
-                targetIndex = task.LineIndex;
-            }
-            else
-            {
-                targetIndex = lines.FindIndex(l => l.Contains(task.Text));
-            }
+            int targetIndex = ResolveTargetIndex(lines, task);
 
-            if (targetIndex >= 0)
+            if (targetIndex >= 0 && targetIndex < lines.Count)
             {
                 lines.RemoveAt(targetIndex);
 
-                using (var writeStream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.ReadWrite))
-                using (var writer = new StreamWriter(writeStream, Encoding.UTF8))
+                bool writeSuccess = await SafeWriteLinesAtomicAsync(filePath, lines);
+                if (writeSuccess)
                 {
-                    foreach (var line in lines)
-                    {
-                        await writer.WriteLineAsync(line);
-                    }
+                    return true;
                 }
-
-                return true;
             }
         }
         catch (Exception ex)
@@ -367,6 +515,7 @@ public class ObsidianService : IDisposable
     public void Dispose()
     {
         _watcher?.Dispose();
-        _debounceTimer?.Dispose();
+        var oldTimer = Interlocked.Exchange(ref _debounceTimer, null);
+        oldTimer?.Dispose();
     }
 }

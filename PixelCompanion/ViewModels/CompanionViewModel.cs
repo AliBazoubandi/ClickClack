@@ -153,7 +153,7 @@ public class CompanionViewModel : ViewModelBase
     {
         var rawTasks = _obsidianService.GetTodayTasks();
 
-        System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+        void ApplyTasks()
         {
             Tasks.Clear();
             foreach (var task in rawTasks)
@@ -163,7 +163,24 @@ public class CompanionViewModel : ViewModelBase
 
             HasTasks = Tasks.Count > 0;
             StatusMessage = _obsidianService.StatusMessage;
-        });
+        }
+
+        var app = System.Windows.Application.Current;
+        if (app?.Dispatcher != null)
+        {
+            if (app.Dispatcher.CheckAccess())
+            {
+                ApplyTasks();
+            }
+            else
+            {
+                app.Dispatcher.BeginInvoke(DispatcherPriority.DataBind, (Action)ApplyTasks);
+            }
+        }
+        else
+        {
+            ApplyTasks();
+        }
     }
 
     private void OnVaultTasksChanged()
@@ -226,6 +243,18 @@ public class CompanionViewModel : ViewModelBase
 
     public async void OnTypewriterClicked()
     {
+        try
+        {
+            await OnTypewriterClickedAsync();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"OnTypewriterClicked error: {ex.Message}");
+        }
+    }
+
+    public async Task OnTypewriterClickedAsync()
+    {
         if (_isAnimating)
         {
             return;
@@ -263,6 +292,10 @@ public class CompanionViewModel : ViewModelBase
                 await Task.Delay(80);
             }
         }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"OnTypewriterClickedAsync error: {ex.Message}");
+        }
         finally
         {
             _isAnimating = false;
@@ -276,64 +309,130 @@ public class CompanionViewModel : ViewModelBase
         CompanionImage = PetCelebrate;
     }
 
-    private async void OnToggleTask(ObsidianTask? task)
+    public async Task<bool> ToggleTaskAsync(ObsidianTask? task)
     {
         if (task == null)
         {
-            return;
+            return false;
         }
 
-        bool targetState = !task.IsCompleted;
-        bool success = await _obsidianService.SetTaskCompletionAsync(task, targetState);
-
-        if (success)
+        try
         {
-            if (targetState)
+            bool targetState = !task.IsCompleted;
+            bool success = await _obsidianService.SetTaskCompletionAsync(task, targetState);
+
+            if (success)
             {
-                // Only celebrate when completing a task
-                _temporaryPetState = PetCelebrate;
-                _temporaryStateTicksRemaining = 5;
-                CompanionImage = PetCelebrate;
+                if (targetState)
+                {
+                    // Only celebrate when completing a task
+                    _temporaryPetState = PetCelebrate;
+                    _temporaryStateTicksRemaining = 5;
+                    CompanionImage = PetCelebrate;
+                }
+                RefreshTasks();
+                return true;
             }
-            RefreshTasks();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"ToggleTaskAsync error: {ex.Message}");
+        }
+
+        return false;
+    }
+
+    private async void OnToggleTask(ObsidianTask? task)
+    {
+        try
+        {
+            await ToggleTaskAsync(task);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"OnToggleTask error: {ex.Message}");
         }
     }
 
-    private async void OnAddTask()
+    public async Task<bool> AddTaskAsync()
     {
         if (string.IsNullOrWhiteSpace(NewTaskText))
         {
             IsAddingTask = false;
-            return;
+            return false;
         }
 
         string textToAdd = NewTaskText.Trim();
-        NewTaskText = string.Empty;
-        IsAddingTask = false;
 
-        bool success = await _obsidianService.AddTaskAsync(textToAdd);
-        if (success)
+        try
         {
-            RefreshTasks();
+            bool success = await _obsidianService.AddTaskAsync(textToAdd);
+            if (success)
+            {
+                NewTaskText = string.Empty;
+                IsAddingTask = false;
+                RefreshTasks();
 
-            // Tactile keypress feedback
-            TypewriterImage = TwPress;
-            await Task.Delay(80);
-            TypewriterImage = TwIdle;
+                // Tactile keypress feedback
+                TypewriterImage = TwPress;
+                await Task.Delay(80);
+                TypewriterImage = TwIdle;
+                return true;
+            }
         }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"AddTaskAsync error: {ex.Message}");
+        }
+
+        return false;
+    }
+
+    private async void OnAddTask()
+    {
+        try
+        {
+            await AddTaskAsync();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"OnAddTask error: {ex.Message}");
+        }
+    }
+
+    public async Task<bool> DeleteTaskAsync(ObsidianTask? task)
+    {
+        if (task == null)
+        {
+            return false;
+        }
+
+        try
+        {
+            bool success = await _obsidianService.DeleteTaskAsync(task);
+            if (success)
+            {
+                RefreshTasks();
+                return true;
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"DeleteTaskAsync error: {ex.Message}");
+        }
+
+        return false;
     }
 
     private async void OnDeleteTask(ObsidianTask? task)
     {
-        if (task == null)
+        try
         {
-            return;
+            await DeleteTaskAsync(task);
         }
-
-        bool success = await _obsidianService.DeleteTaskAsync(task);
-        if (success)
+        catch (Exception ex)
         {
-            RefreshTasks();
+            System.Diagnostics.Debug.WriteLine($"OnDeleteTask error: {ex.Message}");
         }
     }
 }

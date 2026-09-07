@@ -8,6 +8,7 @@ public class ObsidianTask : ViewModelBase
     private string _text = string.Empty;
 
     public int LineIndex { get; set; }
+    public int OccurrenceIndex { get; set; }
     public string RawLine { get; set; } = string.Empty;
     public string Indent { get; set; } = string.Empty;
     public string ListMarker { get; set; } = "-";

@@ -1,6 +1,7 @@
 using System.IO;
 using PixelCompanion.Models;
 using PixelCompanion.Services;
+using PixelCompanion.ViewModels;
 
 namespace PixelCompanion.Tests;
 
@@ -69,6 +70,47 @@ public class ObsidianIntegrationTests
     }
 
     [TestMethod]
+    public void TaskParser_MetadataPreservation_TogglesCheckboxOnly()
+    {
+        var parser = new ObsidianTaskParser();
+        string rawLine = "- [ ] Deploy server #urgent 10:00";
+        var tasks = parser.ParseTasks(new[] { rawLine });
+        Assert.HasCount(1, tasks);
+        Assert.IsFalse(tasks[0].IsCompleted);
+
+        var toggledLine = parser.BuildToggledLine(tasks[0], true);
+        Assert.AreEqual("- [x] Deploy server #urgent 10:00", toggledLine);
+
+        // Toggle back to incomplete
+        tasks[0].RawLine = toggledLine;
+        tasks[0].IsCompleted = true;
+        var untoggledLine = parser.BuildToggledLine(tasks[0], false);
+        Assert.AreEqual("- [ ] Deploy server #urgent 10:00", untoggledLine);
+    }
+
+    [TestMethod]
+    public void TaskParser_NestedTasks_PreservesIndentation()
+    {
+        var parser = new ObsidianTaskParser();
+        var lines = new[]
+        {
+            "- [ ] Root task",
+            "  - [ ] Child task 2-space",
+            "    - [x] Grandchild task 4-space"
+        };
+
+        var tasks = parser.ParseTasks(lines);
+        Assert.HasCount(3, tasks);
+        Assert.AreEqual("", tasks[0].Indent);
+        Assert.AreEqual("  ", tasks[1].Indent);
+        Assert.AreEqual("    ", tasks[2].Indent);
+        Assert.IsTrue(tasks[2].IsCompleted);
+
+        var toggledChild = parser.BuildToggledLine(tasks[1], true);
+        Assert.AreEqual("  - [x] Child task 2-space", toggledChild);
+    }
+
+    [TestMethod]
     public void TaskParser_BuildsNewTaskLine()
     {
         var parser = new ObsidianTaskParser();
@@ -77,10 +119,74 @@ public class ObsidianIntegrationTests
     }
 
     [TestMethod]
+    public async Task ObsidianService_DuplicateTaskIdentity_TogglesExactTargetLine()
+    {
+        var tempVault = Path.Combine(Path.GetTempPath(), "ObsidianTestVault_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var configService = new ConfigService();
+            var config = new AppConfig
+            {
+                ObsidianVaultPath = tempVault,
+                DailyNotesFolder = "Task-Manager",
+                DailyNoteDateFormat = "yyyy-MM-dd"
+            };
+
+            using var service = new ObsidianService(configService, config);
+            var notePath = service.EnsureDailyNoteFileExists();
+            Assert.IsNotNull(notePath);
+
+            var initialContent = "# Tasks\n\n- [ ] Ship Phase 2\n- [ ] Ship Phase 2\n";
+            await File.WriteAllTextAsync(notePath, initialContent);
+
+            var tasks = service.GetTodayTasks();
+            Assert.HasCount(2, tasks);
+            Assert.AreEqual("Ship Phase 2", tasks[0].Text);
+            Assert.AreEqual("Ship Phase 2", tasks[1].Text);
+            Assert.AreEqual(0, tasks[0].OccurrenceIndex);
+            Assert.AreEqual(1, tasks[1].OccurrenceIndex);
+
+            // Toggle the SECOND task
+            var toggleSuccess = await service.SetTaskCompletionAsync(tasks[1], true);
+            Assert.IsTrue(toggleSuccess);
+
+            var linesAfterToggle = await File.ReadAllLinesAsync(notePath);
+            int firstTaskLineIndex = -1;
+            int secondTaskLineIndex = -1;
+            for (int i = 0; i < linesAfterToggle.Length; i++)
+            {
+                if (linesAfterToggle[i].Contains("Ship Phase 2"))
+                {
+                    if (firstTaskLineIndex == -1)
+                    {
+                        firstTaskLineIndex = i;
+                    }
+                    else
+                    {
+                        secondTaskLineIndex = i;
+                    }
+                }
+            }
+
+            Assert.AreNotEqual(-1, firstTaskLineIndex);
+            Assert.AreNotEqual(-1, secondTaskLineIndex);
+            Assert.AreEqual("- [ ] Ship Phase 2", linesAfterToggle[firstTaskLineIndex]);
+            Assert.AreEqual("- [x] Ship Phase 2", linesAfterToggle[secondTaskLineIndex]);
+        }
+        finally
+        {
+            if (Directory.Exists(tempVault))
+            {
+                try { Directory.Delete(tempVault, true); } catch { }
+            }
+        }
+    }
+
+    [TestMethod]
     public async Task ObsidianService_AddsAndDeletesTasksInVault()
     {
         var tempVault = Path.Combine(Path.GetTempPath(), "ObsidianTestVault_" + Guid.NewGuid().ToString("N"));
-        var dailyNotesDir = Path.Combine(tempVault, "Task-Manger");
+        var dailyNotesDir = Path.Combine(tempVault, "Task-Manager");
 
         try
         {
@@ -88,12 +194,12 @@ public class ObsidianIntegrationTests
             var config = new AppConfig
             {
                 ObsidianVaultPath = tempVault,
-                DailyNotesFolder = "Task-Manger",
+                DailyNotesFolder = "Task-Manager",
                 DailyNoteDateFormat = "yyyy-MM-dd"
             };
 
             using var service = new ObsidianService(configService, config);
-            
+
             // 1. Auto-creation of directory and daily note
             var notePath = service.EnsureDailyNoteFileExists();
             Assert.IsNotNull(notePath);
@@ -136,7 +242,7 @@ public class ObsidianIntegrationTests
         {
             if (Directory.Exists(tempVault))
             {
-                Directory.Delete(tempVault, true);
+                try { Directory.Delete(tempVault, true); } catch { }
             }
         }
     }
@@ -151,7 +257,7 @@ public class ObsidianIntegrationTests
             var config = new AppConfig
             {
                 ObsidianVaultPath = tempVault,
-                DailyNotesFolder = "Task-Manger",
+                DailyNotesFolder = "Task-Manager",
                 DailyNoteDateFormat = "yyyy-MM-dd"
             };
 
@@ -197,8 +303,154 @@ public class ObsidianIntegrationTests
         {
             if (Directory.Exists(tempVault))
             {
-                Directory.Delete(tempVault, true);
+                try { Directory.Delete(tempVault, true); } catch { }
             }
         }
+    }
+
+    [TestMethod]
+    public void DateFormatHelper_FallbackToDefaultOnInvalidFormat()
+    {
+        // Valid format
+        bool valid = DateFormatHelper.TryFormatDate("yyyy-MM-dd", new DateTime(2026, 9, 7), out string validResult);
+        Assert.IsTrue(valid);
+        Assert.AreEqual("2026-09-07", validResult);
+
+        // Invalid format strings (single % or single backslash throws FormatException in .NET DateTime.ToString)
+        bool invalid1 = DateFormatHelper.TryFormatDate("%", new DateTime(2026, 9, 7), out string fallbackResult1);
+        Assert.IsFalse(invalid1);
+        Assert.AreEqual("2026-09-07", fallbackResult1);
+
+        bool invalid2 = DateFormatHelper.TryFormatDate(null, new DateTime(2026, 9, 7), out string fallbackResult2);
+        Assert.IsFalse(invalid2);
+        Assert.AreEqual("2026-09-07", fallbackResult2);
+    }
+
+    [TestMethod]
+    public void ConfigService_TaskMangerMigration_Behaviors()
+    {
+        var configService = new ConfigService();
+        var tempVault = Path.Combine(Path.GetTempPath(), "MigrationTestVault_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempVault);
+
+        try
+        {
+            // Case A: Neither old nor new directory exists -> migrates to Task-Manager
+            var configA = new AppConfig
+            {
+                ObsidianVaultPath = tempVault,
+                DailyNotesFolder = "Task-Manger"
+            };
+            bool migratedA = configService.MigrateDailyNotesFolder(configA);
+            Assert.IsTrue(migratedA);
+            Assert.AreEqual("Task-Manager", configA.DailyNotesFolder);
+
+            // Case B: New directory exists -> migrates to Task-Manager
+            string newDirPath = Path.Combine(tempVault, "Task-Manager");
+            Directory.CreateDirectory(newDirPath);
+            var configB = new AppConfig
+            {
+                ObsidianVaultPath = tempVault,
+                DailyNotesFolder = "Task-Manger"
+            };
+            bool migratedB = configService.MigrateDailyNotesFolder(configB);
+            Assert.IsTrue(migratedB);
+            Assert.AreEqual("Task-Manager", configB.DailyNotesFolder);
+            Directory.Delete(newDirPath);
+
+            // Case C: Old directory exists, new directory does NOT exist -> preserves legacy Task-Manger
+            string oldDirPath = Path.Combine(tempVault, "Task-Manger");
+            Directory.CreateDirectory(oldDirPath);
+            var configC = new AppConfig
+            {
+                ObsidianVaultPath = tempVault,
+                DailyNotesFolder = "Task-Manger"
+            };
+            bool migratedC = configService.MigrateDailyNotesFolder(configC);
+            Assert.IsFalse(migratedC);
+            Assert.AreEqual("Task-Manger", configC.DailyNotesFolder);
+        }
+        finally
+        {
+            if (Directory.Exists(tempVault))
+            {
+                try { Directory.Delete(tempVault, true); } catch { }
+            }
+        }
+    }
+
+    [TestMethod]
+    public void ConfigService_ValidateWindowBounds_CorrectsOffscreenAndInvalidBounds()
+    {
+        var configService = new ConfigService();
+
+        // Very negative coordinates
+        var bounds1 = configService.ValidateWindowBounds(-99999, -99999, 480, 420);
+        Assert.IsGreaterThanOrEqualTo(0.0, bounds1.Left);
+        Assert.IsGreaterThanOrEqualTo(0.0, bounds1.Top);
+        Assert.AreEqual(480, bounds1.Width);
+        Assert.AreEqual(420, bounds1.Height);
+
+        // Huge coordinates far off-screen
+        var bounds2 = configService.ValidateWindowBounds(99999, 99999, 480, 420);
+        Assert.IsLessThanOrEqualTo(System.Windows.SystemParameters.VirtualScreenWidth, bounds2.Left);
+        Assert.IsLessThanOrEqualTo(System.Windows.SystemParameters.VirtualScreenHeight, bounds2.Top);
+
+        // Custom default width & height for PaperWindow
+        var paperBounds = configService.ValidateWindowBounds(null, null, null, null, defaultWidth: 380, defaultHeight: 520, minWidth: 280, minHeight: 360);
+        Assert.AreEqual(380, paperBounds.Width);
+        Assert.AreEqual(520, paperBounds.Height);
+    }
+
+    [TestMethod]
+    public async Task SingleFireAdd_GuardsAgainstDuplicateTaskCreation()
+    {
+        var tempVault = Path.Combine(Path.GetTempPath(), "SingleFireTestVault_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var configService = new ConfigService();
+            var config = new AppConfig
+            {
+                ObsidianVaultPath = tempVault,
+                DailyNotesFolder = "Task-Manager",
+                DailyNoteDateFormat = "yyyy-MM-dd"
+            };
+
+            using var obsidianService = new ObsidianService(configService, config);
+            var viewModel = new CompanionViewModel(configService, obsidianService, config);
+
+            viewModel.IsAddingTask = true;
+            viewModel.NewTaskText = "Single Fire Test Task";
+
+            // First add succeeds
+            bool firstResult = await viewModel.AddTaskAsync();
+            Assert.IsTrue(firstResult);
+            Assert.AreEqual(string.Empty, viewModel.NewTaskText);
+            Assert.IsFalse(viewModel.IsAddingTask);
+
+            // Subsequent immediate add without text returns false and does not add duplicate
+            bool secondResult = await viewModel.AddTaskAsync();
+            Assert.IsFalse(secondResult);
+
+            var tasks = obsidianService.GetTodayTasks();
+            Assert.HasCount(1, tasks);
+            Assert.AreEqual("Single Fire Test Task", tasks[0].Text);
+        }
+        finally
+        {
+            if (Directory.Exists(tempVault))
+            {
+                try { Directory.Delete(tempVault, true); } catch { }
+            }
+        }
+    }
+
+    [TestMethod]
+    public void TestVaultIsolation_NeverTouchesRealUserVault()
+    {
+        var config = new AppConfig();
+        // Fresh install must have null/empty ObsidianVaultPath
+        Assert.IsNull(config.ObsidianVaultPath);
+        Assert.AreEqual("Task-Manager", config.DailyNotesFolder);
     }
 }
