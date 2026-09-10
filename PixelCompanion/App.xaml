@@ -1,8 +1,30 @@
 <Application x:Class="PixelCompanion.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:converters="clr-namespace:PixelCompanion.Converters"
              ShutdownMode="OnExplicitShutdown">
     <Application.Resources>
-         
+        <!-- Primary Persian & Latin Typeface (Mikhak-FD with Latin & System fallbacks) -->
+        <FontFamily x:Key="AppFontFamily">pack://application:,,,/ClickClack;component/Assets/Fonts/#Mikhak-FD VF, pack://application:,,,/ClickClack;component/Assets/Fonts/#Mikhak-FD, Mikhak-FD, Consolas, Courier New, Segoe UI, Tahoma, sans-serif</FontFamily>
+
+        <!-- Bidirectional text flow converter -->
+        <converters:TextToFlowDirectionConverter x:Key="TextToFlowDirectionConverter"/>
+
+        <!-- Global control styles applying AppFontFamily -->
+        <Style TargetType="{x:Type Window}">
+            <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}"/>
+        </Style>
+        <Style TargetType="{x:Type TextBlock}">
+            <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}"/>
+        </Style>
+        <Style TargetType="{x:Type TextBox}">
+            <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}"/>
+        </Style>
+        <Style TargetType="{x:Type Button}">
+            <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}"/>
+        </Style>
+        <Style TargetType="{x:Type CheckBox}">
+            <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}"/>
+        </Style>
     </Application.Resources>
 </Application>

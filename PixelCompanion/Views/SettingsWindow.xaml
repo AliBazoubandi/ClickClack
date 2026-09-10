@@ -9,7 +9,7 @@
         ResizeMode="CanResizeWithGrip"
         Background="#1a1d24"
         Foreground="#e8e2d5"
-        FontFamily="Segoe UI, Tahoma">
+        FontFamily="{StaticResource AppFontFamily}">
 
     <Window.Resources>
         <Style TargetType="TextBox">

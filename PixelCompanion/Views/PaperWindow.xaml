@@ -122,8 +122,8 @@
                     <!-- Paper Header -->
                     <Grid Grid.Row="0" Margin="0,0,0,12" Background="Transparent" MouseLeftButtonDown="Header_MouseLeftButtonDown">
                         <TextBlock Text="TODAY'S TASKS" 
-                                   FontFamily="Consolas, Courier New, monospace"
-                                   FontSize="15" FontWeight="Bold" 
+                                   FontFamily="{StaticResource AppFontFamily}"
+                                   FontSize="14" FontWeight="Bold" 
                                    Foreground="#43261b"
                                    TextDecorations="Underline"/>
                     </Grid>
@@ -136,7 +136,7 @@
                                 <!-- Status / Empty Message -->
                                 <TextBlock Text="{Binding StatusMessage}"
                                            Visibility="{Binding HasTasks, Converter={StaticResource InverseBoolToVis}}"
-                                           FontFamily="Consolas, Courier New, monospace"
+                                           FontFamily="{StaticResource AppFontFamily}"
                                            FontSize="11.5" Foreground="#694a40" FontStyle="Italic"
                                            Margin="2,0,0,8"/>
 
@@ -144,7 +144,8 @@
                                 <ItemsControl ItemsSource="{Binding Tasks}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
-                                            <Grid x:Name="RowGrid" Margin="0,2,0,4" Background="Transparent">
+                                            <Grid x:Name="RowGrid" Margin="0,2,0,4" Background="Transparent"
+                                                  FlowDirection="{Binding Text, Converter={StaticResource TextToFlowDirectionConverter}}">
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="*"/>
                                                     <ColumnDefinition Width="Auto"/>
@@ -174,7 +175,7 @@
 
                                                         <!-- Task Text with Guaranteed Ink Strikethrough -->
                                                         <TextBlock Text="{Binding Text}" 
-                                                                   FontFamily="Consolas, Courier New, monospace"
+                                                                   FontFamily="{StaticResource AppFontFamily}"
                                                                    FontSize="12"
                                                                    TextWrapping="Wrap" VerticalAlignment="Center"
                                                                    Grid.Column="1">
@@ -241,7 +242,7 @@
                                                         <TextBlock Text="+" FontSize="13" FontWeight="Bold" Foreground="#43261b"
                                                                    HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-2,0,0"/>
                                                     </Border>
-                                                    <TextBlock Text="New task..." FontFamily="Consolas, Courier New, monospace"
+                                                    <TextBlock Text="New task..." FontFamily="{StaticResource AppFontFamily}"
                                                                FontSize="11.5" Foreground="#7a6258" FontStyle="Italic"
                                                                VerticalAlignment="Center"/>
                                                 </StackPanel>
@@ -258,6 +259,7 @@
                                 <!-- Inline Task Input Row (Box for Checkbox + Simple Line) -->
                                 <Grid x:Name="InlineInputRow"
                                       Visibility="{Binding IsAddingTask, Converter={StaticResource BoolToVis}}"
+                                      FlowDirection="{Binding NewTaskText, Converter={StaticResource TextToFlowDirectionConverter}}"
                                       Margin="4,2,0,4">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto"/>
@@ -273,7 +275,7 @@
                                     <!-- Simple Line Text Input -->
                                     <TextBox x:Name="PaperTaskInput"
                                              Text="{Binding NewTaskText, UpdateSourceTrigger=PropertyChanged}"
-                                             FontFamily="Consolas, Courier New, monospace"
+                                             FontFamily="{StaticResource AppFontFamily}"
                                              FontSize="12" Foreground="#2d1c16" CaretBrush="#43261b"
                                              Background="Transparent"
                                              BorderThickness="0,0,0,1.5" BorderBrush="#5e3a2f"
