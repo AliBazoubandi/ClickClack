@@ -94,14 +94,14 @@ def main():
         if os.path.exists(src_path):
             pet_images[dest_name] = extract_clean_sprite(src_path, dest_path, is_typewriter=False)
 
-    # 3. Create updated app.ico with real artwork from icon-same.jpg
-    icon_same_path = os.path.join(ASSETS_DIR, "icon-same.jpg")
-    if os.path.exists(icon_same_path):
-        icon_img = Image.open(icon_same_path).convert("RGBA")
+    # 3. Create updated app.ico with real artwork from icon-simple.jpg
+    icon_simple_path = os.path.join(ASSETS_DIR, "icon-simple.jpg")
+    if os.path.exists(icon_simple_path):
+        icon_img = Image.open(icon_simple_path).convert("RGBA")
         icon_path = os.path.join(dest_icon, "app.ico")
         icon_sizes = [(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
         icon_img.save(icon_path, format="ICO", sizes=icon_sizes)
-        print(f"Generated new App Icon from icon-same.jpg: {icon_path}")
+        print(f"Generated new App Icon from icon-simple.jpg: {icon_path}")
 
 if __name__ == "__main__":
     main()
