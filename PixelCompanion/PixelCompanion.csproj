@@ -19,4 +19,8 @@
     <Resource Include="Assets\**\*.ttf" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="PixelCompanion.Tests" />
+  </ItemGroup>
+
 </Project>

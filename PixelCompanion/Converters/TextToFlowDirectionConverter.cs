@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Windows;
 using System.Windows.Data;
+using Binding = System.Windows.Data.Binding;
 using FlowDirection = System.Windows.FlowDirection;
 
 namespace PixelCompanion.Converters;
@@ -45,6 +46,6 @@ public class TextToFlowDirectionConverter : IValueConverter
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
-        throw new NotImplementedException();
+        return Binding.DoNothing;
     }
 }

@@ -112,13 +112,13 @@ public partial class PaperWindow : Window
         }
     }
 
-    private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    private async void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (!IsInteractiveElement(e.OriginalSource as DependencyObject))
         {
             if (_viewModel.IsAddingTask && !IsChildOf(e.OriginalSource as DependencyObject, PaperTaskInput))
             {
-                CommitAndFinishAddingTask();
+                await CommitAndFinishAddingTask();
             }
 
             try
@@ -142,11 +142,11 @@ public partial class PaperWindow : Window
         }
     }
 
-    private void PaperSheet_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    private async void PaperSheet_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (_viewModel.IsAddingTask && !IsChildOf(e.OriginalSource as DependencyObject, PaperTaskInput))
         {
-            CommitAndFinishAddingTask();
+            await CommitAndFinishAddingTask();
         }
     }
 
@@ -160,7 +160,7 @@ public partial class PaperWindow : Window
         });
     }
 
-    private void PaperTaskInput_LostFocus(object sender, RoutedEventArgs e)
+    private async void PaperTaskInput_LostFocus(object sender, RoutedEventArgs e)
     {
         var focused = FocusManager.GetFocusedElement(this) as DependencyObject;
         if (focused != null)
@@ -171,7 +171,7 @@ public partial class PaperWindow : Window
             }
         }
 
-        CommitAndFinishAddingTask();
+        await CommitAndFinishAddingTask();
     }
 
     private bool IsToggleTaskElement(DependencyObject? element)
@@ -187,7 +187,7 @@ public partial class PaperWindow : Window
         return false;
     }
 
-    private async void CommitAndFinishAddingTask()
+    public async Task CommitAndFinishAddingTask()
     {
         if (Interlocked.CompareExchange(ref _isCommitting, 1, 0) != 0)
         {
@@ -226,12 +226,12 @@ public partial class PaperWindow : Window
         Hide();
     }
 
-    private void PaperTaskInput_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    private async void PaperTaskInput_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
         if (e.Key == Key.Enter)
         {
             e.Handled = true;
-            CommitAndFinishAddingTask();
+            await CommitAndFinishAddingTask();
         }
         else if (e.Key == Key.Escape)
         {

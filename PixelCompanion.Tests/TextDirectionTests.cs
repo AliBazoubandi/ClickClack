@@ -66,4 +66,14 @@ public class TextDirectionTests
         var resultLtr = _converter.Convert("English test", typeof(FlowDirection), null, System.Globalization.CultureInfo.InvariantCulture);
         Assert.AreEqual(FlowDirection.LeftToRight, resultLtr);
     }
+
+    [TestMethod]
+    public void Test_ConvertBack_ReturnsBindingDoNothing_NeverThrows()
+    {
+        var result = _converter.ConvertBack(FlowDirection.RightToLeft, typeof(string), null, System.Globalization.CultureInfo.InvariantCulture);
+        Assert.AreEqual(System.Windows.Data.Binding.DoNothing, result);
+
+        var resultNull = _converter.ConvertBack(null, typeof(string), null, System.Globalization.CultureInfo.InvariantCulture);
+        Assert.AreEqual(System.Windows.Data.Binding.DoNothing, resultNull);
+    }
 }

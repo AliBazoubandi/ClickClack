@@ -20,6 +20,7 @@ public class TrayService : IDisposable
     private readonly Action? _openPaperAction;
     private ToolStripMenuItem? _alwaysOnTopMenuItem;
     private ToolStripMenuItem? _startupMenuItem;
+    private bool _isUpdatingStartupMenu;
 
     public TrayService(
         CompanionViewModel viewModel,
@@ -120,9 +121,27 @@ public class TrayService : IDisposable
         };
         _startupMenuItem.CheckedChanged += (s, e) =>
         {
+            if (_isUpdatingStartupMenu) return;
+
             bool isChecked = _startupMenuItem.Checked;
-            _config.StartWithWindows = isChecked;
-            StartupService.SetStartup(isChecked);
+            if (isChecked)
+            {
+                if (!StartupService.SetStartup(true))
+                {
+                    _isUpdatingStartupMenu = true;
+                    _startupMenuItem.Checked = false;
+                    _isUpdatingStartupMenu = false;
+                    _config.StartWithWindows = false;
+                    _configService.Save(_config);
+                    return;
+                }
+            }
+            else
+            {
+                StartupService.SetStartup(false);
+            }
+
+            _config.StartWithWindows = _startupMenuItem.Checked;
             _configService.Save(_config);
         };
 
@@ -162,7 +181,9 @@ public class TrayService : IDisposable
     {
         if (_startupMenuItem != null && _startupMenuItem.Checked != isStartupEnabled)
         {
+            _isUpdatingStartupMenu = true;
             _startupMenuItem.Checked = isStartupEnabled;
+            _isUpdatingStartupMenu = false;
         }
     }
 

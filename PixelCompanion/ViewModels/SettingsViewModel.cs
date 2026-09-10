@@ -90,9 +90,9 @@ public class SettingsViewModel : ViewModelBase
     {
         using var dialog = new FolderBrowserDialog
         {
-            Description = "Select your Obsidian Vault Root Folder",
+            Description = "Select your Obsidian Vault or any folder to store tasks",
             UseDescriptionForTitle = true,
-            ShowNewFolderButton = false
+            ShowNewFolderButton = true
         };
 
         if (!string.IsNullOrWhiteSpace(_vaultPath) && System.IO.Directory.Exists(_vaultPath))
@@ -124,9 +124,20 @@ public class SettingsViewModel : ViewModelBase
             }
         }
 
-        _config.StartWithWindows = _startWithWindows;
-        StartupService.SetStartup(_startWithWindows);
+        if (_startWithWindows)
+        {
+            if (!StartupService.SetStartup(true))
+            {
+                _startWithWindows = false;
+                OnPropertyChanged(nameof(StartWithWindows));
+            }
+        }
+        else
+        {
+            StartupService.SetStartup(false);
+        }
 
+        _config.StartWithWindows = _startWithWindows;
         _configService.Save(_config);
         _obsidianService.SetupWatcher();
 

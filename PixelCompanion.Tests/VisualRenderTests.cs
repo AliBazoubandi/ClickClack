@@ -16,7 +16,9 @@ public class VisualRenderTests
 
     private void RunInSTA(Action action)
     {
-        Exception? threadEx = null;
+        Exception? setupEx = null;
+        Exception? actionEx = null;
+
         var thread = new Thread(() =>
         {
             try
@@ -33,12 +35,33 @@ public class VisualRenderTests
                         {
                         }
                     }
+
+                    if (System.Windows.Application.Current != null)
+                    {
+                        if (!System.Windows.Application.Current.Resources.Contains("AppFontFamily"))
+                        {
+                            System.Windows.Application.Current.Resources["AppFontFamily"] = new FontFamily("Consolas, Segoe UI, Tahoma, sans-serif");
+                        }
+                        if (!System.Windows.Application.Current.Resources.Contains("TextToFlowDirectionConverter"))
+                        {
+                            System.Windows.Application.Current.Resources["TextToFlowDirectionConverter"] = new PixelCompanion.Converters.TextToFlowDirectionConverter();
+                        }
+                    }
                 }
+            }
+            catch (Exception ex)
+            {
+                setupEx = ex;
+                return;
+            }
+
+            try
+            {
                 action();
             }
             catch (Exception ex)
             {
-                threadEx = ex;
+                actionEx = ex;
             }
         });
 
@@ -46,9 +69,18 @@ public class VisualRenderTests
         thread.Start();
         thread.Join();
 
-        if (threadEx != null)
+        if (setupEx != null)
         {
-            Assert.Inconclusive($"Visual test skipped due to environment limitations: {threadEx.Message}");
+            Assert.Inconclusive($"Visual test skipped due to environment limitations: {setupEx.Message}");
+        }
+
+        if (actionEx != null)
+        {
+            if (actionEx is UnitTestAssertException)
+            {
+                throw actionEx;
+            }
+            throw new Exception($"Visual test failed during execution: {actionEx.Message}", actionEx);
         }
     }
 

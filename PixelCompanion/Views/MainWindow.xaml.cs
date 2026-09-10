@@ -175,7 +175,7 @@ public partial class MainWindow : Window
         {
             if (_clickedTarget == "Typewriter")
             {
-                _viewModel.OnTypewriterClicked();
+                _viewModel.TypewriterClickCommand.Execute(null);
             }
             else if (_clickedTarget == "Companion")
             {
@@ -208,7 +208,7 @@ public partial class MainWindow : Window
     private void PaperCloseBtn_Click(object sender, RoutedEventArgs e)
     {
         e.Handled = true;
-        _viewModel.OnTypewriterClicked();
+        _viewModel.TypewriterClickCommand.Execute(null);
     }
 
     public void OpenPaperWindow()

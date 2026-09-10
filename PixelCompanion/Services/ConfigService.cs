@@ -15,24 +15,82 @@ public struct WindowBounds
 
 public class ConfigService
 {
-    private static readonly string ConfigDirectory = Path.Combine(
+    public static readonly string DefaultOldConfigDirectory = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "PixelCompanion");
 
-    private static readonly string ConfigFilePath = Path.Combine(ConfigDirectory, "config.json");
+    public static readonly string DefaultConfigDirectory = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "ClickClack");
+
+    private readonly string _configDirectory;
+    private readonly string _oldConfigDirectory;
+    private readonly string _configFilePath;
+    private readonly string _oldConfigFilePath;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true
     };
 
+    public ConfigService() : this(DefaultConfigDirectory, DefaultOldConfigDirectory)
+    {
+    }
+
+    public ConfigService(string configDirectory, string? oldConfigDirectory = null)
+    {
+        _configDirectory = configDirectory;
+        _oldConfigDirectory = oldConfigDirectory ?? DefaultOldConfigDirectory;
+        _configFilePath = Path.Combine(_configDirectory, "config.json");
+        _oldConfigFilePath = Path.Combine(_oldConfigDirectory, "config.json");
+    }
+
+    public string ConfigDirectory => _configDirectory;
+    public string ConfigFilePath => _configFilePath;
+
+    public bool MigrateLegacyConfigDirectory()
+    {
+        try
+        {
+            if (!File.Exists(_configFilePath) && File.Exists(_oldConfigFilePath))
+            {
+                if (!Directory.Exists(_configDirectory))
+                {
+                    Directory.CreateDirectory(_configDirectory);
+                }
+
+                File.Copy(_oldConfigFilePath, _configFilePath, overwrite: false);
+                if (File.Exists(_configFilePath))
+                {
+                    try
+                    {
+                        File.Delete(_oldConfigFilePath);
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Failed to delete old config file: {ex.Message}");
+                    }
+                    return true;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to migrate legacy config directory: {ex.Message}");
+        }
+
+        return false;
+    }
+
     public AppConfig Load()
     {
         try
         {
-            if (File.Exists(ConfigFilePath))
+            MigrateLegacyConfigDirectory();
+
+            if (File.Exists(_configFilePath))
             {
-                var json = File.ReadAllText(ConfigFilePath);
+                var json = File.ReadAllText(_configFilePath);
                 var config = JsonSerializer.Deserialize<AppConfig>(json, JsonOptions);
                 if (config != null)
                 {

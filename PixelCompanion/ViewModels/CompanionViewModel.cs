@@ -57,11 +57,11 @@ public class CompanionViewModel : ViewModelBase
             _companionImage = PetHappy;
         }
 
-        TypewriterClickCommand = new RelayCommand(OnTypewriterClicked);
+        TypewriterClickCommand = new AsyncRelayCommand(OnTypewriterClickedAsync);
         PetClickCommand = new RelayCommand(OnPetClicked);
-        ToggleTaskCommand = new RelayCommand<ObsidianTask>(OnToggleTask);
-        AddTaskCommand = new RelayCommand(OnAddTask);
-        DeleteTaskCommand = new RelayCommand<ObsidianTask>(OnDeleteTask);
+        ToggleTaskCommand = new AsyncRelayCommand<ObsidianTask>(ToggleTaskAsync);
+        AddTaskCommand = new AsyncRelayCommand(async () => await AddTaskAsync());
+        DeleteTaskCommand = new AsyncRelayCommand<ObsidianTask>(DeleteTaskAsync);
         OpenAddTaskCommand = new RelayCommand(() => IsAddingTask = true);
         CloseAddTaskCommand = new RelayCommand(() => { IsAddingTask = false; NewTaskText = string.Empty; });
 
@@ -241,18 +241,6 @@ public class CompanionViewModel : ViewModelBase
         CompanionImage = currentPose;
     }
 
-    public async void OnTypewriterClicked()
-    {
-        try
-        {
-            await OnTypewriterClickedAsync();
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"OnTypewriterClicked error: {ex.Message}");
-        }
-    }
-
     public async Task OnTypewriterClickedAsync()
     {
         if (_isAnimating)
@@ -347,18 +335,6 @@ public class CompanionViewModel : ViewModelBase
         return false;
     }
 
-    private async void OnToggleTask(ObsidianTask? task)
-    {
-        try
-        {
-            await ToggleTaskAsync(task);
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"OnToggleTask error: {ex.Message}");
-        }
-    }
-
     public async Task<bool> AddTaskAsync()
     {
         if (string.IsNullOrWhiteSpace(NewTaskText))
@@ -398,18 +374,6 @@ public class CompanionViewModel : ViewModelBase
         return false;
     }
 
-    private async void OnAddTask()
-    {
-        try
-        {
-            await AddTaskAsync();
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"OnAddTask error: {ex.Message}");
-        }
-    }
-
     public async Task<bool> DeleteTaskAsync(ObsidianTask? task)
     {
         if (task == null)
@@ -437,17 +401,5 @@ public class CompanionViewModel : ViewModelBase
         }
 
         return false;
-    }
-
-    private async void OnDeleteTask(ObsidianTask? task)
-    {
-        try
-        {
-            await DeleteTaskAsync(task);
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"OnDeleteTask error: {ex.Message}");
-        }
     }
 }

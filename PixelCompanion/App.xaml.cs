@@ -19,6 +19,15 @@ public partial class App : System.Windows.Application
     {
         base.OnStartup(e);
 
+        if (Resources["AppFontFamily"] is System.Windows.Media.FontFamily appFontFamily)
+        {
+            var resolvedFamily = FontHelper.EnsureOrFallback(appFontFamily, "Mikhak-FD VF");
+            if (!ReferenceEquals(resolvedFamily, appFontFamily))
+            {
+                Resources["AppFontFamily"] = resolvedFamily;
+            }
+        }
+
         _configService = new ConfigService();
         _config = _configService.Load();
         _obsidianService = new ObsidianService(_configService, _config);
@@ -26,10 +35,7 @@ public partial class App : System.Windows.Application
 
         _mainWindow = new MainWindow(_configService, _config, _viewModel);
 
-        if (_config.StartWithWindows)
-        {
-            StartupService.SyncStartup(true);
-        }
+        StartupService.SyncStartup(_config.StartWithWindows);
 
         _trayService = new TrayService(
             _viewModel,
@@ -68,6 +74,17 @@ public partial class App : System.Windows.Application
             });
 
         _mainWindow.Show();
+
+        if (string.IsNullOrWhiteSpace(_config.ObsidianVaultPath) || !System.IO.Directory.Exists(_config.ObsidianVaultPath))
+        {
+            var settingsWin = new SettingsWindow(_configService, _obsidianService, _config)
+            {
+                Owner = _mainWindow
+            };
+            settingsWin.ShowDialog();
+            _viewModel.RefreshTasks();
+            _trayService?.UpdateStartupState(_config.StartWithWindows);
+        }
     }
 
     private void ShutdownApplication()
