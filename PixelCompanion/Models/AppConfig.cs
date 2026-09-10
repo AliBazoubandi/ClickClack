@@ -7,6 +7,7 @@ public class AppConfig
     public double? WindowWidth { get; set; } = 480;
     public double? WindowHeight { get; set; } = 420;
     public bool AlwaysOnTop { get; set; } = true;
+    public bool StartWithWindows { get; set; } = false;
     public string? ObsidianVaultPath { get; set; } = null;
     public string DailyNotesFolder { get; set; } = "Task-Manager";
     public string DailyNoteDateFormat { get; set; } = "yyyy-MM-dd";

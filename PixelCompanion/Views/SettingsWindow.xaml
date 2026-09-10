@@ -29,6 +29,42 @@
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
         </Style>
+        <Style TargetType="CheckBox">
+            <Setter Property="Foreground" Value="#f4ede0"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <Grid VerticalAlignment="Center">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border x:Name="CheckBorder" Width="16" Height="16"
+                                    Background="#252a34" BorderBrush="#3c4452" BorderThickness="1.5"
+                                    CornerRadius="3" VerticalAlignment="Center" Margin="0,0,8,0">
+                                <TextBlock x:Name="CheckIcon" Text="✓" FontSize="12" FontWeight="Bold"
+                                           Foreground="#8ec5bb" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           Margin="0,-2,0,0" Visibility="Collapsed"/>
+                            </Border>
+                            <ContentPresenter Grid.Column="1" VerticalAlignment="Center" RecognizesAccessKey="True"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="CheckIcon" Property="Visibility" Value="Visible"/>
+                                <Setter TargetName="CheckBorder" Property="BorderBrush" Value="#417378"/>
+                                <Setter TargetName="CheckBorder" Property="Background" Value="#1d3438"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="CheckBorder" Property="BorderBrush" Value="#f5cf7a"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <Grid Margin="24">
@@ -40,13 +76,16 @@
 
         <!-- Header -->
         <StackPanel Grid.Row="0" Margin="0,0,0,16">
-            <TextBlock Text="Obsidian Vault Settings" FontSize="18" FontWeight="Bold" Foreground="#f5cf7a"/>
-            <TextBlock Text="Connect your vintage typewriter to your daily tasks note" FontSize="12" Foreground="#9aa0ad" Margin="0,4,0,0"/>
+            <TextBlock Text="ClickClack Settings" FontSize="18" FontWeight="Bold" Foreground="#f5cf7a"/>
+            <TextBlock Text="Configure Obsidian task synchronization and startup options" FontSize="12" Foreground="#9aa0ad" Margin="0,4,0,0"/>
         </StackPanel>
 
         <!-- Form Fields inside ScrollViewer for responsiveness -->
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,0,10,0">
             <StackPanel VerticalAlignment="Top">
+                <!-- Obsidian Vault Section -->
+                <TextBlock Text="Obsidian Vault Integration" FontWeight="Bold" FontSize="13" Foreground="#8ec5bb" Margin="0,0,0,10"/>
+
                 <!-- Vault Root -->
                 <TextBlock Text="Obsidian Vault Root Folder:" FontWeight="SemiBold" Margin="0,0,0,6"/>
                 <Grid Margin="0,0,0,14">
@@ -69,6 +108,16 @@
                     <Run Text="Expected filename today: "/>
                     <Run Text="{Binding PreviewFileName, Mode=OneWay}" FontWeight="Bold" Foreground="#8ec5bb"/>
                 </TextBlock>
+
+                <!-- System & Startup Section -->
+                <Border Height="1" Background="#2c3340" Margin="0,6,0,14"/>
+                <TextBlock Text="System Startup" FontWeight="Bold" FontSize="13" Foreground="#8ec5bb" Margin="0,0,0,10"/>
+
+                <CheckBox Content="Launch ClickClack on Windows startup"
+                          IsChecked="{Binding StartWithWindows, Mode=TwoWay}"
+                          Margin="0,0,0,4"/>
+                <TextBlock Margin="24,0,0,14" FontSize="11" Foreground="#9aa0ad" TextWrapping="Wrap"
+                           Text="Automatically starts ClickClack in the background when you log into Windows."/>
             </StackPanel>
         </ScrollViewer>
 

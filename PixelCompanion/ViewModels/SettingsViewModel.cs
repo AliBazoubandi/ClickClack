@@ -15,6 +15,7 @@ public class SettingsViewModel : ViewModelBase
     private string _vaultPath;
     private string _dailyNotesFolder;
     private string _dailyNoteDateFormat;
+    private bool _startWithWindows;
 
     public SettingsViewModel(
         ConfigService configService,
@@ -32,10 +33,17 @@ public class SettingsViewModel : ViewModelBase
         _dailyNoteDateFormat = string.IsNullOrWhiteSpace(config.DailyNoteDateFormat)
             ? DateFormatHelper.DefaultDateFormat
             : config.DailyNoteDateFormat;
+        _startWithWindows = config.StartWithWindows || StartupService.IsStartupEnabled();
 
         BrowseVaultCommand = new RelayCommand(OnBrowseVault);
         SaveCommand = new RelayCommand(OnSave);
         CancelCommand = new RelayCommand(_closeAction);
+    }
+
+    public bool StartWithWindows
+    {
+        get => _startWithWindows;
+        set => SetProperty(ref _startWithWindows, value);
     }
 
     public string VaultPath
@@ -115,6 +123,9 @@ public class SettingsViewModel : ViewModelBase
                 _config.DailyNoteDateFormat = DateFormatHelper.DefaultDateFormat;
             }
         }
+
+        _config.StartWithWindows = _startWithWindows;
+        StartupService.SetStartup(_startWithWindows);
 
         _configService.Save(_config);
         _obsidianService.SetupWatcher();

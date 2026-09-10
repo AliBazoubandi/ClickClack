@@ -26,8 +26,15 @@ public partial class App : System.Windows.Application
 
         _mainWindow = new MainWindow(_configService, _config, _viewModel);
 
+        if (_config.StartWithWindows)
+        {
+            StartupService.SyncStartup(true);
+        }
+
         _trayService = new TrayService(
             _viewModel,
+            _configService,
+            _config,
             showAction: () =>
             {
                 if (_mainWindow != null)
@@ -48,6 +55,7 @@ public partial class App : System.Windows.Application
                     var settingsWin = new SettingsWindow(_configService, _obsidianService, _config);
                     settingsWin.ShowDialog();
                     _viewModel?.RefreshTasks();
+                    _trayService?.UpdateStartupState(_config.StartWithWindows);
                 }
             },
             exitAction: () =>

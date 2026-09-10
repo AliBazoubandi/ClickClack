@@ -1,6 +1,7 @@
 using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
+using PixelCompanion.Models;
 using PixelCompanion.ViewModels;
 using Application = System.Windows.Application;
 
@@ -10,15 +11,20 @@ public class TrayService : IDisposable
 {
     private readonly NotifyIcon _notifyIcon;
     private readonly CompanionViewModel _viewModel;
+    private readonly ConfigService _configService;
+    private readonly AppConfig _config;
     private readonly Action _showAction;
     private readonly Action _hideAction;
     private readonly Action _openSettingsAction;
     private readonly Action _exitAction;
     private readonly Action? _openPaperAction;
     private ToolStripMenuItem? _alwaysOnTopMenuItem;
+    private ToolStripMenuItem? _startupMenuItem;
 
     public TrayService(
         CompanionViewModel viewModel,
+        ConfigService configService,
+        AppConfig config,
         Action showAction,
         Action hideAction,
         Action openSettingsAction,
@@ -26,6 +32,8 @@ public class TrayService : IDisposable
         Action? openPaperAction = null)
     {
         _viewModel = viewModel;
+        _configService = configService;
+        _config = config;
         _showAction = showAction;
         _hideAction = hideAction;
         _openSettingsAction = openSettingsAction;
@@ -105,6 +113,19 @@ public class TrayService : IDisposable
             _viewModel.IsAlwaysOnTop = _alwaysOnTopMenuItem.Checked;
         };
 
+        _startupMenuItem = new ToolStripMenuItem("Launch on Windows Startup")
+        {
+            Checked = _config.StartWithWindows || StartupService.IsStartupEnabled(),
+            CheckOnClick = true
+        };
+        _startupMenuItem.CheckedChanged += (s, e) =>
+        {
+            bool isChecked = _startupMenuItem.Checked;
+            _config.StartWithWindows = isChecked;
+            StartupService.SetStartup(isChecked);
+            _configService.Save(_config);
+        };
+
         var settingsItem = new ToolStripMenuItem("Settings...", null, (s, e) =>
         {
             _openSettingsAction();
@@ -121,6 +142,7 @@ public class TrayService : IDisposable
         contextMenu.Items.Add(hideItem);
         contextMenu.Items.Add(new ToolStripSeparator());
         contextMenu.Items.Add(_alwaysOnTopMenuItem);
+        contextMenu.Items.Add(_startupMenuItem);
         contextMenu.Items.Add(settingsItem);
         contextMenu.Items.Add(new ToolStripSeparator());
         contextMenu.Items.Add(exitItem);
@@ -133,6 +155,14 @@ public class TrayService : IDisposable
         if (_alwaysOnTopMenuItem != null && _alwaysOnTopMenuItem.Checked != isAlwaysOnTop)
         {
             _alwaysOnTopMenuItem.Checked = isAlwaysOnTop;
+        }
+    }
+
+    public void UpdateStartupState(bool isStartupEnabled)
+    {
+        if (_startupMenuItem != null && _startupMenuItem.Checked != isStartupEnabled)
+        {
+            _startupMenuItem.Checked = isStartupEnabled;
         }
     }
 
