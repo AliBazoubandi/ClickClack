@@ -171,4 +171,62 @@ public class WeeklyViewTests
         vm.NextDayCommand.Execute(null);
         Assert.AreEqual(DateTime.Today, vm.SelectedDate);
     }
+
+    [TestMethod]
+    public async Task Test_CompanionViewModel_TypewriterClick_WhenPaperExtended_InvokesClosePaperAction()
+    {
+        var (service, config, configService) = CreateEnvironment();
+        using (service)
+        {
+            config.IsPaperExtended = true;
+            var vm = new CompanionViewModel(configService, service, config);
+
+            bool closeInvoked = false;
+            vm.ClosePaperAction = () => closeInvoked = true;
+
+            Assert.IsTrue(vm.IsPaperExtended);
+
+            await vm.OnTypewriterClickedAsync();
+
+            Assert.IsFalse(vm.IsPaperExtended);
+            Assert.IsTrue(closeInvoked, "ClosePaperAction must be invoked when paper is retracted/closed via typewriter click");
+        }
+    }
+
+    [TestMethod]
+    public void Test_CompanionViewModel_IsPaperExtended_SetFalse_InvokesClosePaperAction()
+    {
+        var (service, config, configService) = CreateEnvironment();
+        using (service)
+        {
+            config.IsPaperExtended = true;
+            var vm = new CompanionViewModel(configService, service, config);
+
+            bool closeInvoked = false;
+            vm.ClosePaperAction = () => closeInvoked = true;
+
+            vm.IsPaperExtended = false;
+
+            Assert.IsTrue(closeInvoked);
+        }
+    }
+
+    [TestMethod]
+    public void Test_CompanionViewModel_IsPaperExtended_SetTrue_DoesNotInvokeClosePaperAction()
+    {
+        var (service, config, configService) = CreateEnvironment();
+        using (service)
+        {
+            config.IsPaperExtended = false;
+            var vm = new CompanionViewModel(configService, service, config);
+
+            bool closeInvoked = false;
+            vm.ClosePaperAction = () => closeInvoked = true;
+
+            vm.IsPaperExtended = true;
+
+            Assert.IsFalse(closeInvoked, "ClosePaperAction must NOT be invoked when paper is extended/opened");
+        }
+    }
 }
+

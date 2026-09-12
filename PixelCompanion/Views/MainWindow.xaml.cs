@@ -48,6 +48,7 @@ public partial class MainWindow : Window
         _config = config;
         _viewModel = viewModel;
         DataContext = _viewModel;
+        _viewModel.ClosePaperAction = ClosePaperWindow;
 
         Loaded += MainWindow_Loaded;
         Closing += MainWindow_Closing;
@@ -217,9 +218,25 @@ public partial class MainWindow : Window
         {
             _paperWindow = new PaperWindow(_configService, _config, _viewModel);
         }
+        _viewModel.IsPaperExtended = true;
         _paperWindow.Show();
         _paperWindow.WindowState = WindowState.Normal;
         _paperWindow.Activate();
+    }
+
+    public void ClosePaperWindow()
+    {
+        if (Dispatcher.CheckAccess())
+        {
+            if (_paperWindow != null && _paperWindow.IsVisible)
+            {
+                _paperWindow.Hide();
+            }
+        }
+        else
+        {
+            Dispatcher.Invoke(ClosePaperWindow);
+        }
     }
 
     private void ResizeGrip_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)

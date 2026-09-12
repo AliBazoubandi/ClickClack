@@ -49,6 +49,7 @@ public class CompanionViewModel : ViewModelBase
     public ObservableCollection<ObsidianTask> Tasks { get; } = new();
 
     public Action<string, string>? ShowReminderAction { get; set; }
+    public Action? ClosePaperAction { get; set; }
 
     public CompanionViewModel(ConfigService configService, ObsidianService obsidianService, AppConfig config)
     {
@@ -194,6 +195,10 @@ public class CompanionViewModel : ViewModelBase
                 _config.IsPaperExtended = value;
                 _configService.Save(_config);
                 SoundService.Play(SoundKind.Slide);
+                if (!value)
+                {
+                    ClosePaperAction?.Invoke();
+                }
             }
         }
     }
@@ -411,6 +416,7 @@ public class CompanionViewModel : ViewModelBase
             {
                 IsPaperExtended = false;
                 IsAddingTask = false;
+                ClosePaperAction?.Invoke();
 
                 TypewriterImage = TwPress;
                 CompanionImage = PetCurious;
