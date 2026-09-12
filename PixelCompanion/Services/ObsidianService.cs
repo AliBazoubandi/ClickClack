@@ -22,6 +22,7 @@ public class ObsidianService : IDisposable
     private FileSystemWatcher? _watcher;
     private System.Threading.Timer? _debounceTimer;
     private int _selfWritingCount;
+    private readonly SemaphoreSlim _fileLock = new(1, 1);
     private string? _currentDailyNotePath;
 
     public event Action<string?>? TasksChanged;
@@ -361,6 +362,7 @@ public class ObsidianService : IDisposable
             return false;
         }
 
+        await _fileLock.WaitAsync();
         Interlocked.Increment(ref _selfWritingCount);
         try
         {
@@ -412,6 +414,7 @@ public class ObsidianService : IDisposable
         }
         finally
         {
+            _fileLock.Release();
             await Task.Delay(400);
             Interlocked.Decrement(ref _selfWritingCount);
         }
@@ -587,6 +590,7 @@ public class ObsidianService : IDisposable
             return false;
         }
 
+        await _fileLock.WaitAsync();
         Interlocked.Increment(ref _selfWritingCount);
         try
         {
@@ -629,6 +633,7 @@ public class ObsidianService : IDisposable
         }
         finally
         {
+            _fileLock.Release();
             await Task.Delay(400);
             Interlocked.Decrement(ref _selfWritingCount);
         }
@@ -651,6 +656,7 @@ public class ObsidianService : IDisposable
             return false;
         }
 
+        await _fileLock.WaitAsync();
         Interlocked.Increment(ref _selfWritingCount);
         try
         {
@@ -689,6 +695,7 @@ public class ObsidianService : IDisposable
         }
         finally
         {
+            _fileLock.Release();
             await Task.Delay(400);
             Interlocked.Decrement(ref _selfWritingCount);
         }
@@ -704,6 +711,7 @@ public class ObsidianService : IDisposable
             return false;
         }
 
+        await _fileLock.WaitAsync();
         Interlocked.Increment(ref _selfWritingCount);
         try
         {
@@ -744,6 +752,7 @@ public class ObsidianService : IDisposable
         }
         finally
         {
+            _fileLock.Release();
             await Task.Delay(400);
             Interlocked.Decrement(ref _selfWritingCount);
         }
@@ -772,6 +781,7 @@ public class ObsidianService : IDisposable
             return false;
         }
 
+        await _fileLock.WaitAsync();
         Interlocked.Increment(ref _selfWritingCount);
         try
         {
@@ -823,6 +833,7 @@ public class ObsidianService : IDisposable
         }
         finally
         {
+            _fileLock.Release();
             await Task.Delay(400);
             Interlocked.Decrement(ref _selfWritingCount);
         }
@@ -835,5 +846,6 @@ public class ObsidianService : IDisposable
         _watcher?.Dispose();
         var oldTimer = Interlocked.Exchange(ref _debounceTimer, null);
         oldTimer?.Dispose();
+        _fileLock.Dispose();
     }
 }

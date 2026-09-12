@@ -13,7 +13,7 @@
         AllowsTransparency="True"
         Background="Transparent"
         ShowInTaskbar="False"
-        Topmost="True"
+        Topmost="{Binding IsAlwaysOnTop, Mode=OneWay}"
         SnapsToDevicePixels="True"
         UseLayoutRounding="True"
         RenderOptions.BitmapScalingMode="NearestNeighbor"
@@ -265,6 +265,8 @@
                     <!-- Scrollable Tasks Area -->
                     <Grid Grid.Row="1">
                         <ScrollViewer x:Name="TasksScrollViewer"
+                                      Background="Transparent"
+                                      PreviewMouseLeftButtonDown="TasksScrollViewer_PreviewMouseLeftButtonDown"
                                       VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                             <StackPanel Orientation="Vertical">
                                 <!-- Status / Empty Message -->

@@ -228,5 +228,49 @@ public class WeeklyViewTests
             Assert.IsFalse(closeInvoked, "ClosePaperAction must NOT be invoked when paper is extended/opened");
         }
     }
+
+    [TestMethod]
+    public async Task Test_AddTaskAsync_EmptyText_ClosesAddingTaskWithoutAdding()
+    {
+        var (service, config, configService) = CreateEnvironment();
+        using (service)
+        {
+            service.EnsureDailyNoteFileExists(DateTime.Today);
+            var vm = new CompanionViewModel(configService, service, config);
+
+            vm.IsAddingTask = true;
+            vm.NewTaskText = "   ";
+
+            bool added = await vm.AddTaskAsync();
+
+            Assert.IsFalse(added);
+            Assert.IsFalse(vm.IsAddingTask);
+            Assert.IsEmpty(service.GetTodayTasks());
+        }
+    }
+
+    [TestMethod]
+    public async Task Test_AddTaskAsync_WithText_SavesTaskAndClosesAddingTask()
+    {
+        var (service, config, configService) = CreateEnvironment();
+        using (service)
+        {
+            service.EnsureDailyNoteFileExists(DateTime.Today);
+            var vm = new CompanionViewModel(configService, service, config);
+
+            vm.IsAddingTask = true;
+            vm.NewTaskText = "New task from paper input";
+
+            bool added = await vm.AddTaskAsync();
+
+            Assert.IsTrue(added);
+            Assert.IsFalse(vm.IsAddingTask);
+            Assert.AreEqual(string.Empty, vm.NewTaskText);
+            var saved = service.GetTodayTasks();
+            Assert.HasCount(1, saved);
+            Assert.AreEqual("New task from paper input", saved[0].Text);
+        }
+    }
 }
+
 

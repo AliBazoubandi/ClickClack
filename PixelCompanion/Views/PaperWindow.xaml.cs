@@ -24,6 +24,15 @@ public partial class PaperWindow : Window
         _viewModel = viewModel;
         DataContext = _viewModel;
 
+        Topmost = _viewModel.IsAlwaysOnTop;
+        _viewModel.PropertyChanged += (s, e) =>
+        {
+            if (e.PropertyName == nameof(CompanionViewModel.IsAlwaysOnTop))
+            {
+                Topmost = _viewModel.IsAlwaysOnTop;
+            }
+        };
+
         Loaded += PaperWindow_Loaded;
         Closing += PaperWindow_Closing;
         LocationChanged += PaperWindow_LocationChanged;
@@ -160,31 +169,21 @@ public partial class PaperWindow : Window
         });
     }
 
-    private async void PaperTaskInput_LostFocus(object sender, RoutedEventArgs e)
+    private async void TasksScrollViewer_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        var focused = FocusManager.GetFocusedElement(this) as DependencyObject;
-        if (focused != null)
+        if (_viewModel.IsAddingTask)
         {
-            if (IsChildOf(focused, ShowAddInputBtn) || IsToggleTaskElement(focused))
+            var source = e.OriginalSource as DependencyObject;
+            if (!IsChildOf(source, PaperTaskInput))
             {
-                return;
+                await CommitAndFinishAddingTask();
             }
         }
-
-        await CommitAndFinishAddingTask();
     }
 
-    private bool IsToggleTaskElement(DependencyObject? element)
+    private async void PaperTaskInput_LostFocus(object sender, RoutedEventArgs e)
     {
-        while (element != null && element != this)
-        {
-            if (element is System.Windows.Controls.Button btn && btn.Command == _viewModel.ToggleTaskCommand)
-            {
-                return true;
-            }
-            element = System.Windows.Media.VisualTreeHelper.GetParent(element);
-        }
-        return false;
+        await CommitAndFinishAddingTask();
     }
 
     public async Task CommitAndFinishAddingTask()
@@ -198,6 +197,7 @@ public partial class PaperWindow : Window
         {
             if (string.IsNullOrWhiteSpace(_viewModel.NewTaskText))
             {
+                _viewModel.NewTaskText = string.Empty;
                 _viewModel.IsAddingTask = false;
                 return;
             }
