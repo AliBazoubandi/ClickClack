@@ -24,7 +24,7 @@ public class ObsidianService : IDisposable
     private int _selfWritingCount;
     private string? _currentDailyNotePath;
 
-    public event Action? TasksChanged;
+    public event Action<string?>? TasksChanged;
 
     public VaultStatus Status { get; private set; } = VaultStatus.NotConfigured;
     public string StatusMessage { get; private set; } = string.Empty;
@@ -87,7 +87,7 @@ public class ObsidianService : IDisposable
     private void OnWatcherError(object sender, ErrorEventArgs e)
     {
         System.Diagnostics.Debug.WriteLine($"FileSystemWatcher error: {e.GetException()?.Message}");
-        TriggerDebouncedRefresh();
+        TriggerDebouncedRefresh(null);
     }
 
     private void OnFileChanged(object sender, FileSystemEventArgs e)
@@ -97,23 +97,24 @@ public class ObsidianService : IDisposable
             return;
         }
 
-        TriggerDebouncedRefresh();
+        TriggerDebouncedRefresh(e.FullPath);
     }
 
-    private void TriggerDebouncedRefresh()
+    private void TriggerDebouncedRefresh(string? filePath = null)
     {
         // Debounce notifications (400ms) with atomic exchange to avoid timer race conditions
         var newTimer = new System.Threading.Timer(_ =>
         {
-            TasksChanged?.Invoke();
+            TasksChanged?.Invoke(filePath);
         }, null, 400, Timeout.Infinite);
 
         var oldTimer = Interlocked.Exchange(ref _debounceTimer, newTimer);
         oldTimer?.Dispose();
     }
 
-    private string? PrepareDailyNotePath()
+    public string? PrepareDailyNotePath(DateTime? date = null)
     {
+        DateTime targetDate = date ?? DateTime.Now;
         if (string.IsNullOrWhiteSpace(_config.ObsidianVaultPath))
         {
             return null;
@@ -141,13 +142,69 @@ public class ObsidianService : IDisposable
             }
         }
 
-        string dateString = DateFormatHelper.FormatDate(_config.DailyNoteDateFormat, DateTime.Now);
+        string dateString = DateFormatHelper.FormatDate(_config.DailyNoteDateFormat, targetDate);
         return Path.Combine(targetDir, $"{dateString}.md");
     }
 
-    public string? EnsureDailyNoteFileExists()
+    /// <summary>
+    /// Scans backward up to 7 days for the most recent existing daily note in the vault folder
+    /// with open (uncompleted) tasks, returning those tasks. Notes with zero open tasks are skipped
+    /// so leftovers from earlier in the week are not abandoned. Returns empty list if no open tasks exist.
+    /// </summary>
+    public List<ObsidianTask> GetRolloverCandidates(DateTime targetDate)
     {
-        string? targetFilePath = PrepareDailyNotePath();
+        for (int dayOffset = 1; dayOffset <= 7; dayOffset++)
+        {
+            DateTime pastDate = targetDate.AddDays(-dayOffset);
+            string? pastPath = PrepareDailyNotePath(pastDate);
+            if (pastPath != null && File.Exists(pastPath))
+            {
+                try
+                {
+                    string[] lines = File.ReadAllLines(pastPath);
+                    var tasks = _parser.ParseTasks(lines);
+                    var openTasks = tasks.Where(t => !t.IsCompleted).ToList();
+                    if (openTasks.Count > 0)
+                    {
+                        return openTasks;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Error scanning past note for rollover: {ex.Message}");
+                }
+            }
+        }
+
+        return new List<ObsidianTask>();
+    }
+
+    private List<string> BuildInitialDailyNoteLines(DateTime targetDate)
+    {
+        string dateString = DateFormatHelper.FormatDate(_config.DailyNoteDateFormat, targetDate);
+        var initialLines = new List<string> { $"# {dateString}", string.Empty };
+
+        if (targetDate.Date == DateTime.Today && _config.RolloverEnabled)
+        {
+            var rolloverCandidates = GetRolloverCandidates(targetDate);
+            if (rolloverCandidates.Count > 0)
+            {
+                initialLines.Add("## From yesterday");
+                foreach (var task in rolloverCandidates)
+                {
+                    initialLines.Add(_parser.BuildNewTaskLine(task.Text));
+                }
+                initialLines.Add(string.Empty);
+            }
+        }
+
+        return initialLines;
+    }
+
+    public string? EnsureDailyNoteFileExists(DateTime? date = null)
+    {
+        DateTime targetDate = date ?? DateTime.Now;
+        string? targetFilePath = PrepareDailyNotePath(targetDate);
         if (targetFilePath == null)
         {
             return null;
@@ -157,8 +214,7 @@ public class ObsidianService : IDisposable
         {
             try
             {
-                string dateString = DateFormatHelper.FormatDate(_config.DailyNoteDateFormat, DateTime.Now);
-                var initialLines = new[] { $"# {dateString}", string.Empty };
+                var initialLines = BuildInitialDailyNoteLines(targetDate);
                 SafeWriteLinesAtomic(targetFilePath, initialLines);
             }
             catch (Exception ex)
@@ -167,37 +223,24 @@ public class ObsidianService : IDisposable
             }
         }
 
-        _currentDailyNotePath = targetFilePath;
+        if (targetDate.Date == DateTime.Today)
+        {
+            _currentDailyNotePath = targetFilePath;
+        }
         return targetFilePath;
     }
 
-    public async Task<string?> EnsureDailyNoteFileExistsAsync()
+    // Design Decision & Documentation:
+    // Inverted sync core + async wrapper pattern: EnsureDailyNoteFileExists and SafeWriteLinesAtomic perform
+    // direct synchronous file I/O. Async twins delegate to the sync core via Task.FromResult to eliminate
+    // duplicated rollover/heading/date/atomic-replace logic while avoiding sync-over-async deadlocks on the
+    // WPF UI thread (zero blocking async calls).
+    public Task<string?> EnsureDailyNoteFileExistsAsync(DateTime? date = null)
     {
-        string? targetFilePath = PrepareDailyNotePath();
-        if (targetFilePath == null)
-        {
-            return null;
-        }
-
-        if (!File.Exists(targetFilePath))
-        {
-            try
-            {
-                string dateString = DateFormatHelper.FormatDate(_config.DailyNoteDateFormat, DateTime.Now);
-                var initialLines = new[] { $"# {dateString}", string.Empty };
-                await SafeWriteLinesAtomicAsync(targetFilePath, initialLines);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Failed to create daily note file: {ex.Message}");
-            }
-        }
-
-        _currentDailyNotePath = targetFilePath;
-        return targetFilePath;
+        return Task.FromResult(EnsureDailyNoteFileExists(date));
     }
 
-    public List<ObsidianTask> GetTodayTasks()
+    public List<ObsidianTask> GetTasksForDate(DateTime date)
     {
         if (string.IsNullOrWhiteSpace(_config.ObsidianVaultPath))
         {
@@ -206,32 +249,30 @@ public class ObsidianService : IDisposable
             return new List<ObsidianTask>();
         }
 
-        // Daily rollover check: compare currently watched note path with expected path for today
-        string dateString = DateFormatHelper.FormatDate(_config.DailyNoteDateFormat, DateTime.Now);
-        string expectedDir = _config.ObsidianVaultPath;
-        if (!string.IsNullOrWhiteSpace(_config.DailyNotesFolder))
-        {
-            expectedDir = Path.Combine(_config.ObsidianVaultPath, _config.DailyNotesFolder);
-        }
-        string expectedFilePath = Path.Combine(expectedDir, $"{dateString}.md");
+        string dateString = DateFormatHelper.FormatDate(_config.DailyNoteDateFormat, date);
+        string? expectedFilePath = PrepareDailyNotePath(date);
 
-        if (_currentDailyNotePath != null && !string.Equals(_currentDailyNotePath, expectedFilePath, StringComparison.OrdinalIgnoreCase))
+        if (date.Date == DateTime.Today)
         {
-            SetupWatcher();
+            if (_currentDailyNotePath != null && expectedFilePath != null && !string.Equals(_currentDailyNotePath, expectedFilePath, StringComparison.OrdinalIgnoreCase))
+            {
+                SetupWatcher();
+            }
+            EnsureDailyNoteFileExists(date);
         }
 
-        var filePath = EnsureDailyNoteFileExists();
-
-        if (filePath == null || !File.Exists(filePath))
+        if (expectedFilePath == null || !File.Exists(expectedFilePath))
         {
             Status = VaultStatus.DailyNoteNotFound;
-            StatusMessage = $"Could not access daily note\n({dateString}.md)";
+            StatusMessage = (date.Date == DateTime.Today)
+                ? $"Could not access daily note\n({dateString}.md)"
+                : $"No daily note found\nfor {dateString}";
             return new List<ObsidianTask>();
         }
 
         try
         {
-            using var fileStream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            using var fileStream = new FileStream(expectedFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             using var reader = new StreamReader(fileStream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
 
             var lines = new List<string>();
@@ -245,7 +286,9 @@ public class ObsidianService : IDisposable
             if (tasks.Count == 0)
             {
                 Status = VaultStatus.NoTasksToday;
-                StatusMessage = "No tasks for today.\nType below to add one!";
+                StatusMessage = (date.Date == DateTime.Today)
+                    ? "No tasks for today.\nType below to add one!"
+                    : $"No tasks recorded for\n{dateString}.";
             }
             else
             {
@@ -261,6 +304,119 @@ public class ObsidianService : IDisposable
             StatusMessage = $"Error reading note:\n{ex.Message}";
             return new List<ObsidianTask>();
         }
+    }
+
+    public List<ObsidianTask> GetTodayTasks() => GetTasksForDate(DateTime.Now);
+
+    /// <summary>
+    /// Checks whether there are open tasks from a recent daily note (up to 7 days back)
+    /// that have not yet been copied into today's note.
+    /// </summary>
+    public bool HasPendingRolloverTasks()
+    {
+        if (!_config.RolloverEnabled) return false;
+
+        var candidates = GetRolloverCandidates(DateTime.Today);
+        if (candidates.Count == 0) return false;
+
+        string? todayPath = PrepareDailyNotePath(DateTime.Today);
+        if (todayPath == null || !File.Exists(todayPath))
+        {
+            return candidates.Count > 0;
+        }
+
+        try
+        {
+            string[] lines = File.ReadAllLines(todayPath);
+            var currentTasks = _parser.ParseTasks(lines);
+            var existingTexts = new HashSet<string>(currentTasks.Select(t => t.Text.Trim()), StringComparer.Ordinal);
+            return candidates.Any(t => !existingTexts.Contains(t.Text.Trim()));
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Manually rolls over open tasks from the most recent past note into today's note,
+    /// creating ## From yesterday if not present, and skipping duplicate tasks.
+    /// </summary>
+    public async Task<bool> RolloverNowAsync()
+    {
+        if (!_config.RolloverEnabled)
+        {
+            return false;
+        }
+
+        string? todayPath = await EnsureDailyNoteFileExistsAsync(DateTime.Today);
+        if (todayPath == null || !File.Exists(todayPath))
+        {
+            return false;
+        }
+
+        var rolloverCandidates = GetRolloverCandidates(DateTime.Today);
+        if (rolloverCandidates.Count == 0)
+        {
+            return false;
+        }
+
+        Interlocked.Increment(ref _selfWritingCount);
+        try
+        {
+            var lines = new List<string>();
+            using (var fileStream = new FileStream(todayPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            using (var reader = new StreamReader(fileStream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true))
+            {
+                while (await reader.ReadLineAsync() is { } line)
+                {
+                    lines.Add(line);
+                }
+            }
+
+            var currentTasks = _parser.ParseTasks(lines.ToArray());
+            var existingTexts = new HashSet<string>(currentTasks.Select(t => t.Text.Trim()), StringComparer.Ordinal);
+
+            var toAdd = rolloverCandidates.Where(t => !existingTexts.Contains(t.Text.Trim())).ToList();
+            if (toAdd.Count == 0)
+            {
+                return false;
+            }
+
+            bool hasHeading = lines.Any(l => l.Trim().Equals("## From yesterday", StringComparison.OrdinalIgnoreCase));
+            if (!hasHeading)
+            {
+                if (lines.Count > 0 && !string.IsNullOrWhiteSpace(lines[^1]))
+                {
+                    lines.Add(string.Empty);
+                }
+                lines.Add("## From yesterday");
+            }
+
+            foreach (var task in toAdd)
+            {
+                lines.Add(_parser.BuildNewTaskLine(task.Text));
+            }
+
+            var encoding = DetectEncoding(todayPath);
+            bool success = await SafeWriteLinesAtomicAsync(todayPath, lines, encoding);
+            if (success)
+            {
+                TasksChanged?.Invoke(todayPath);
+                return true;
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"RolloverNowAsync failed: {ex.Message}");
+        }
+        finally
+        {
+            await Task.Delay(400);
+            Interlocked.Decrement(ref _selfWritingCount);
+        }
+
+        return false;
     }
 
     public int ResolveTargetIndex(IReadOnlyList<string> lines, ObsidianTask task)
@@ -416,77 +572,14 @@ public class ObsidianService : IDisposable
         }
     }
 
-    private async Task<bool> SafeWriteLinesAtomicAsync(string targetFilePath, IEnumerable<string> lines, Encoding? encoding = null)
+    private Task<bool> SafeWriteLinesAtomicAsync(string targetFilePath, IEnumerable<string> lines, Encoding? encoding = null)
     {
-        string? targetDir = Path.GetDirectoryName(targetFilePath);
-        if (string.IsNullOrWhiteSpace(targetDir) || !Directory.Exists(targetDir))
-        {
-            return false;
-        }
-
-        string tempFilePath = Path.Combine(targetDir, $".tmp_{Guid.NewGuid():N}.tmp");
-
-        try
-        {
-            var enc = encoding ?? DetectEncoding(targetFilePath);
-            using (var writeStream = new FileStream(tempFilePath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-            using (var writer = new StreamWriter(writeStream, enc))
-            {
-                foreach (var line in lines)
-                {
-                    await writer.WriteLineAsync(line);
-                }
-            }
-
-            if (File.Exists(targetFilePath))
-            {
-                try
-                {
-                    File.Replace(tempFilePath, targetFilePath, null, ignoreMetadataErrors: true);
-                    return true;
-                }
-                catch (PlatformNotSupportedException)
-                {
-                    File.Move(tempFilePath, targetFilePath, overwrite: true);
-                    return true;
-                }
-                catch (IOException ioEx)
-                {
-                    System.Diagnostics.Debug.WriteLine($"File.Replace fallback: {ioEx.Message}");
-                    File.Move(tempFilePath, targetFilePath, overwrite: true);
-                    return true;
-                }
-            }
-            else
-            {
-                File.Move(tempFilePath, targetFilePath);
-                return true;
-            }
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"SafeWriteLinesAtomicAsync failed for target {Path.GetFileName(targetFilePath)}: {ex.Message}");
-            return false;
-        }
-        finally
-        {
-            if (File.Exists(tempFilePath))
-            {
-                try
-                {
-                    File.Delete(tempFilePath);
-                }
-                catch (Exception cleanupEx)
-                {
-                    System.Diagnostics.Debug.WriteLine($"Failed to delete temp file {Path.GetFileName(tempFilePath)}: {cleanupEx.Message}");
-                }
-            }
-        }
+        return Task.FromResult(SafeWriteLinesAtomic(targetFilePath, lines, encoding));
     }
 
-    public async Task<bool> SetTaskCompletionAsync(ObsidianTask task, bool targetState)
+    public async Task<bool> SetTaskCompletionAsync(ObsidianTask task, bool targetState, DateTime? date = null)
     {
-        var filePath = await EnsureDailyNoteFileExistsAsync();
+        var filePath = await EnsureDailyNoteFileExistsAsync(date);
         if (filePath == null || !File.Exists(filePath))
         {
             Status = VaultStatus.Error;
@@ -543,14 +636,14 @@ public class ObsidianService : IDisposable
         return false;
     }
 
-    public async Task<bool> AddTaskAsync(string taskText)
+    public async Task<bool> AddTaskAsync(string taskText, DateTime? date = null)
     {
         if (string.IsNullOrWhiteSpace(taskText))
         {
             return false;
         }
 
-        var filePath = await EnsureDailyNoteFileExistsAsync();
+        var filePath = await EnsureDailyNoteFileExistsAsync(date);
         if (filePath == null || !File.Exists(filePath))
         {
             Status = VaultStatus.Error;
@@ -601,9 +694,9 @@ public class ObsidianService : IDisposable
         }
     }
 
-    public async Task<bool> DeleteTaskAsync(ObsidianTask task)
+    public async Task<bool> DeleteTaskAsync(ObsidianTask task, DateTime? date = null)
     {
-        var filePath = await EnsureDailyNoteFileExistsAsync();
+        var filePath = await EnsureDailyNoteFileExistsAsync(date);
         if (filePath == null || !File.Exists(filePath))
         {
             Status = VaultStatus.Error;
@@ -648,6 +741,85 @@ public class ObsidianService : IDisposable
             System.Diagnostics.Debug.WriteLine($"Failed to delete task: {ex.Message}");
             Status = VaultStatus.Error;
             StatusMessage = "Couldn't save your task to the daily note.";
+        }
+        finally
+        {
+            await Task.Delay(400);
+            Interlocked.Decrement(ref _selfWritingCount);
+        }
+
+        return false;
+    }
+
+    public async Task<bool> UpdateTaskTextAsync(ObsidianTask task, string newText, DateTime? date = null)
+    {
+        if (string.IsNullOrWhiteSpace(newText))
+        {
+            return false;
+        }
+
+        string trimmedNewText = newText.Trim();
+        if (string.Equals(task.Text, trimmedNewText, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        var filePath = await EnsureDailyNoteFileExistsAsync(date);
+        if (filePath == null || !File.Exists(filePath))
+        {
+            Status = VaultStatus.Error;
+            StatusMessage = "Couldn't save your task update to the daily note.";
+            return false;
+        }
+
+        Interlocked.Increment(ref _selfWritingCount);
+        try
+        {
+            var lines = new List<string>();
+            using (var fileStream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            using (var reader = new StreamReader(fileStream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true))
+            {
+                while (await reader.ReadLineAsync() is { } line)
+                {
+                    lines.Add(line);
+                }
+            }
+
+            int targetIndex = ResolveTargetIndex(lines, task);
+            if (targetIndex >= 0 && targetIndex < lines.Count)
+            {
+                string newLine = _parser.BuildUpdatedTextLine(task, trimmedNewText);
+                lines[targetIndex] = newLine;
+
+                var encoding = DetectEncoding(filePath);
+                bool writeSuccess = await SafeWriteLinesAtomicAsync(filePath, lines, encoding);
+                if (writeSuccess)
+                {
+                    task.Text = trimmedNewText;
+                    task.RawLine = newLine;
+                    if (ObsidianTaskParser.TryParseDueTime(trimmedNewText, out var dt))
+                    {
+                        task.DueTime = dt;
+                    }
+                    else
+                    {
+                        task.DueTime = null;
+                    }
+
+                    Status = VaultStatus.Loaded;
+                    StatusMessage = string.Empty;
+                    return true;
+                }
+            }
+
+            Status = VaultStatus.Error;
+            StatusMessage = "Couldn't save your task update to the daily note.";
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to update task text: {ex.Message}");
+            Status = VaultStatus.Error;
+            StatusMessage = "Couldn't save your task update to the daily note.";
         }
         finally
         {

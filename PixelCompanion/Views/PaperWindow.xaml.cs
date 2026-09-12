@@ -267,4 +267,47 @@ public partial class PaperWindow : Window
         }
         return false;
     }
+
+    private void TaskRow_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is FrameworkElement fe && fe.DataContext is ObsidianTask task)
+        {
+            e.Handled = true;
+            _viewModel.StartEditTask(task);
+        }
+    }
+
+    private void EditTaskInput_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.TextBox tb)
+        {
+            tb.Focus();
+            tb.SelectAll();
+        }
+    }
+
+    private async void EditTaskInput_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (sender is System.Windows.Controls.TextBox tb && tb.DataContext is ObsidianTask task)
+        {
+            if (e.Key == Key.Enter)
+            {
+                e.Handled = true;
+                await _viewModel.SaveEditTaskAsync(task);
+            }
+            else if (e.Key == Key.Escape)
+            {
+                e.Handled = true;
+                _viewModel.CancelEditTask(task);
+            }
+        }
+    }
+
+    private async void EditTaskInput_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.TextBox tb && tb.DataContext is ObsidianTask task && task.IsEditing)
+        {
+            await _viewModel.SaveEditTaskAsync(task);
+        }
+    }
 }

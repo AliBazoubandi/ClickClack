@@ -30,6 +30,7 @@ public partial class App : System.Windows.Application
 
         _configService = new ConfigService();
         _config = _configService.Load();
+        SoundService.Enabled = _config.SoundEnabled;
         _obsidianService = new ObsidianService(_configService, _config);
         _viewModel = new CompanionViewModel(_configService, _obsidianService, _config);
 
@@ -60,6 +61,7 @@ public partial class App : System.Windows.Application
                 {
                     var settingsWin = new SettingsWindow(_configService, _obsidianService, _config);
                     settingsWin.ShowDialog();
+                    SoundService.Enabled = _config.SoundEnabled;
                     _viewModel?.RefreshTasks();
                     _trayService?.UpdateStartupState(_config.StartWithWindows);
                 }
@@ -72,6 +74,8 @@ public partial class App : System.Windows.Application
             {
                 _mainWindow?.OpenPaperWindow();
             });
+
+        _viewModel.ShowReminderAction = (title, text) => _trayService?.ShowReminder(title, text);
 
         _mainWindow.Show();
 

@@ -1,6 +1,7 @@
 <Window x:Class="PixelCompanion.Views.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:conv="clr-namespace:PixelCompanion.Converters"
         Title="ClickClack Settings"
         Icon="pack://application:,,,/ClickClack;component/Assets/Icons/app.ico"
         Width="520" Height="480"
@@ -109,6 +110,48 @@
                     <Run Text="{Binding PreviewFileName, Mode=OneWay}" FontWeight="Bold" Foreground="#8ec5bb"/>
                 </TextBlock>
 
+                <!-- Tasks & Experience Section -->
+                <Border Height="1" Background="#2c3340" Margin="0,6,0,14"/>
+                <TextBlock Text="Tasks &amp; Behavior" FontWeight="Bold" FontSize="13" Foreground="#8ec5bb" Margin="0,0,0,10"/>
+
+                <!-- Rollover -->
+                <CheckBox Content="Automatically roll over unfinished tasks from yesterday"
+                          IsChecked="{Binding RolloverEnabled, Mode=TwoWay}"
+                          Margin="0,0,0,4"/>
+                <TextBlock Margin="24,0,0,12" FontSize="11" Foreground="#9aa0ad" TextWrapping="Wrap"
+                           Text="Copies uncompleted tasks into today's note under '## From yesterday' when creating today's note."/>
+
+                <!-- Reminders -->
+                <CheckBox Content="Enable gentle reminders for tasks with due times"
+                          IsChecked="{Binding RemindersEnabled, Mode=TwoWay}"
+                          Margin="0,0,0,4"/>
+                <Grid Margin="24,0,0,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Remind me" VerticalAlignment="Center" FontSize="12" Foreground="#e8e2d5" Margin="0,0,6,0"/>
+                    <TextBox x:Name="MinutesTextBox"
+                             Grid.Column="1" Width="50" Padding="4,2" FontSize="12" TextAlignment="Center" VerticalAlignment="Center">
+                        <TextBox.Text>
+                            <Binding Path="ReminderMinutesBefore" UpdateSourceTrigger="PropertyChanged">
+                                <Binding.ValidationRules>
+                                    <conv:ReminderMinutesValidationRule/>
+                                </Binding.ValidationRules>
+                            </Binding>
+                        </TextBox.Text>
+                    </TextBox>
+                    <TextBlock Text="minutes before due time (0–120)" Grid.Column="2" VerticalAlignment="Center" FontSize="12" Foreground="#9aa0ad" Margin="6,0,0,0"/>
+                </Grid>
+
+                <!-- Ambient Sound -->
+                <CheckBox Content="Play quiet typewriter &amp; paper ambient sounds"
+                          IsChecked="{Binding SoundEnabled, Mode=TwoWay}"
+                          Margin="0,0,0,4"/>
+                <TextBlock Margin="24,0,0,14" FontSize="11" Foreground="#9aa0ad" TextWrapping="Wrap"
+                           Text="Subtle clack on adding a task, pop on completing a task, and slide when folding paper."/>
+
                 <!-- System & Startup Section -->
                 <Border Height="1" Background="#2c3340" Margin="0,6,0,14"/>
                 <TextBlock Text="System Startup" FontWeight="Bold" FontSize="13" Foreground="#8ec5bb" Margin="0,0,0,10"/>
@@ -124,7 +167,17 @@
         <!-- Action Buttons -->
         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
             <Button Content="Cancel" Command="{Binding CancelCommand}" Background="#353b47" BorderBrush="#4a5263" Margin="0,0,10,0" Width="80"/>
-            <Button Content="Save Settings" Command="{Binding SaveCommand}" Background="#2e585c" Width="110"/>
+            <Button Content="Save Settings" Command="{Binding SaveCommand}" Background="#2e585c" Width="110">
+                <Button.Style>
+                    <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding (Validation.HasError), ElementName=MinutesTextBox}" Value="True">
+                                <Setter Property="IsEnabled" Value="False"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
         </StackPanel>
     </Grid>
 </Window>

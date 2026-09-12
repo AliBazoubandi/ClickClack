@@ -17,6 +17,7 @@
     <Resource Include="Assets\**\*.png" />
     <Resource Include="Assets\**\*.ico" />
     <Resource Include="Assets\**\*.ttf" />
+    <Resource Include="Assets\**\*.wav" />
   </ItemGroup>
 
   <ItemGroup>

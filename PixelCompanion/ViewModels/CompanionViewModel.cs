@@ -32,7 +32,14 @@ public class CompanionViewModel : ViewModelBase
     private string _newTaskText = string.Empty;
     private bool _isAddingTask;
 
+    private DateTime _selectedDate = DateTime.Today;
+    private bool _canRollover;
+
     private readonly DispatcherTimer _animTimer;
+    private readonly DispatcherTimer _reminderTimer;
+    private readonly HashSet<string> _notifiedReminderKeys = new(StringComparer.Ordinal);
+    private DateTime _lastReminderCheckDate = DateTime.Today;
+
     private int _idleTickCount;
     private int _specialActionTick;
     private string? _temporaryPetState;
@@ -40,6 +47,8 @@ public class CompanionViewModel : ViewModelBase
     private readonly Random _random = new();
 
     public ObservableCollection<ObsidianTask> Tasks { get; } = new();
+
+    public Action<string, string>? ShowReminderAction { get; set; }
 
     public CompanionViewModel(ConfigService configService, ObsidianService obsidianService, AppConfig config)
     {
@@ -65,6 +74,33 @@ public class CompanionViewModel : ViewModelBase
         OpenAddTaskCommand = new RelayCommand(() => IsAddingTask = true);
         CloseAddTaskCommand = new RelayCommand(() => { IsAddingTask = false; NewTaskText = string.Empty; });
 
+        PrevDayCommand = new RelayCommand(() =>
+        {
+            if (CanGoPrev)
+            {
+                SelectedDate = SelectedDate.AddDays(-1);
+            }
+        }, () => CanGoPrev);
+
+        NextDayCommand = new RelayCommand(() =>
+        {
+            if (CanGoNext)
+            {
+                SelectedDate = SelectedDate.AddDays(1);
+            }
+        }, () => CanGoNext);
+
+        TodayCommand = new RelayCommand(() =>
+        {
+            SelectedDate = DateTime.Today;
+        });
+
+        RolloverCommand = new AsyncRelayCommand(OnRolloverAsync);
+
+        StartEditTaskCommand = new RelayCommand<ObsidianTask>(StartEditTask);
+        SaveEditTaskCommand = new AsyncRelayCommand<ObsidianTask>(SaveEditTaskAsync);
+        CancelEditTaskCommand = new RelayCommand<ObsidianTask>(CancelEditTask);
+
         _obsidianService.TasksChanged += OnVaultTasksChanged;
 
         _specialActionTick = _random.Next(20, 45);
@@ -76,7 +112,51 @@ public class CompanionViewModel : ViewModelBase
         _animTimer.Tick += OnAnimTimerTick;
         _animTimer.Start();
 
+        _reminderTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(60)
+        };
+        _reminderTimer.Tick += (s, e) => CheckReminders(DateTime.Now);
+        _reminderTimer.Start();
+
         RefreshTasks();
+    }
+
+    public DateTime SelectedDate
+    {
+        get => _selectedDate;
+        set
+        {
+            var normalized = value.Date;
+            if (SetProperty(ref _selectedDate, normalized))
+            {
+                OnPropertyChanged(nameof(DayLabel));
+                OnPropertyChanged(nameof(CanGoNext));
+                OnPropertyChanged(nameof(CanGoPrev));
+                CommandManager.InvalidateRequerySuggested();
+                RefreshTasks();
+            }
+        }
+    }
+
+    public bool CanGoPrev => SelectedDate > DateTime.Today.AddDays(-6);
+
+    public bool CanGoNext => SelectedDate < DateTime.Today;
+
+    public string DayLabel
+    {
+        get
+        {
+            if (SelectedDate == DateTime.Today) return "TODAY";
+            if (SelectedDate == DateTime.Today.AddDays(-1)) return "YESTERDAY";
+            return SelectedDate.ToString("ddd, MMM d", System.Globalization.CultureInfo.InvariantCulture).ToUpperInvariant();
+        }
+    }
+
+    public bool CanRollover
+    {
+        get => _canRollover;
+        set => SetProperty(ref _canRollover, value);
     }
 
     public string TypewriterImage
@@ -113,6 +193,7 @@ public class CompanionViewModel : ViewModelBase
             {
                 _config.IsPaperExtended = value;
                 _configService.Save(_config);
+                SoundService.Play(SoundKind.Slide);
             }
         }
     }
@@ -148,10 +229,17 @@ public class CompanionViewModel : ViewModelBase
     public ICommand DeleteTaskCommand { get; }
     public ICommand OpenAddTaskCommand { get; }
     public ICommand CloseAddTaskCommand { get; }
+    public ICommand PrevDayCommand { get; }
+    public ICommand NextDayCommand { get; }
+    public ICommand TodayCommand { get; }
+    public ICommand RolloverCommand { get; }
+    public ICommand StartEditTaskCommand { get; }
+    public ICommand SaveEditTaskCommand { get; }
+    public ICommand CancelEditTaskCommand { get; }
 
     public void RefreshTasks()
     {
-        var rawTasks = _obsidianService.GetTodayTasks();
+        var rawTasks = _obsidianService.GetTasksForDate(SelectedDate);
 
         void ApplyTasks()
         {
@@ -163,6 +251,7 @@ public class CompanionViewModel : ViewModelBase
 
             HasTasks = Tasks.Count > 0;
             StatusMessage = _obsidianService.StatusMessage;
+            CanRollover = _config.RolloverEnabled && SelectedDate == DateTime.Today && _obsidianService.HasPendingRolloverTasks();
         }
 
         var app = System.Windows.Application.Current;
@@ -183,9 +272,61 @@ public class CompanionViewModel : ViewModelBase
         }
     }
 
-    private void OnVaultTasksChanged()
+    private void OnVaultTasksChanged(string? changedPath)
     {
+        if (changedPath != null)
+        {
+            string? currentPath = _obsidianService.PrepareDailyNotePath(SelectedDate);
+            if (currentPath != null && !string.Equals(changedPath, currentPath, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+        }
+
         RefreshTasks();
+    }
+
+    public void CheckReminders(DateTime now)
+    {
+        if (!_config.RemindersEnabled)
+        {
+            return;
+        }
+
+        if (now.Date != _lastReminderCheckDate)
+        {
+            _notifiedReminderKeys.Clear();
+            _lastReminderCheckDate = now.Date;
+        }
+
+        var todayTasks = (SelectedDate.Date == DateTime.Today)
+            ? Tasks.ToList()
+            : _obsidianService.GetTodayTasks();
+
+        var dueTasks = ReminderService.DueSoon(todayTasks, now, _config.ReminderMinutesBefore);
+        foreach (var task in dueTasks)
+        {
+            string key = ReminderService.GetReminderKey(task, now.Date);
+            if (_notifiedReminderKeys.Add(key))
+            {
+                _temporaryPetState = PetCurious;
+                _temporaryStateTicksRemaining = 6;
+                CompanionImage = PetCurious;
+
+                string timeSnippet = task.DueTime.HasValue ? $" ({task.DueTime.Value:hh\\:mm})" : string.Empty;
+                ShowReminderAction?.Invoke("Task Reminder", $"{task.Text}{timeSnippet}");
+            }
+        }
+    }
+
+    private async Task OnRolloverAsync()
+    {
+        bool rolled = await _obsidianService.RolloverNowAsync();
+        if (rolled)
+        {
+            RefreshTasks();
+            SoundService.Play(SoundKind.Slide);
+        }
     }
 
     private void OnAnimTimerTick(object? sender, EventArgs e)
@@ -307,16 +448,17 @@ public class CompanionViewModel : ViewModelBase
         try
         {
             bool targetState = !task.IsCompleted;
-            bool success = await _obsidianService.SetTaskCompletionAsync(task, targetState);
+            bool success = await _obsidianService.SetTaskCompletionAsync(task, targetState, SelectedDate);
 
             if (success)
             {
                 if (targetState)
                 {
-                    // Only celebrate when completing a task
+                    // Only celebrate and pop sound when completing a task
                     _temporaryPetState = PetCelebrate;
                     _temporaryStateTicksRemaining = 5;
                     CompanionImage = PetCelebrate;
+                    SoundService.Play(SoundKind.Pop);
                 }
                 RefreshTasks();
                 return true;
@@ -347,9 +489,10 @@ public class CompanionViewModel : ViewModelBase
 
         try
         {
-            bool success = await _obsidianService.AddTaskAsync(textToAdd);
+            bool success = await _obsidianService.AddTaskAsync(textToAdd, SelectedDate);
             if (success)
             {
+                SoundService.Play(SoundKind.Clack);
                 NewTaskText = string.Empty;
                 IsAddingTask = false;
                 RefreshTasks();
@@ -383,7 +526,7 @@ public class CompanionViewModel : ViewModelBase
 
         try
         {
-            bool success = await _obsidianService.DeleteTaskAsync(task);
+            bool success = await _obsidianService.DeleteTaskAsync(task, SelectedDate);
             if (success)
             {
                 RefreshTasks();
@@ -401,5 +544,67 @@ public class CompanionViewModel : ViewModelBase
         }
 
         return false;
+    }
+
+    public void StartEditTask(ObsidianTask? task)
+    {
+        if (task == null) return;
+        foreach (var t in Tasks)
+        {
+            if (t.IsEditing && t != task)
+            {
+                t.IsEditing = false;
+            }
+        }
+        task.EditText = task.Text;
+        task.IsEditing = true;
+    }
+
+    public async Task<bool> SaveEditTaskAsync(ObsidianTask? task)
+    {
+        if (task == null) return false;
+
+        string newText = task.EditText?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(newText))
+        {
+            task.IsEditing = false;
+            return false;
+        }
+
+        if (string.Equals(task.Text, newText, StringComparison.Ordinal))
+        {
+            task.IsEditing = false;
+            return true;
+        }
+
+        try
+        {
+            bool success = await _obsidianService.UpdateTaskTextAsync(task, newText, SelectedDate);
+            if (success)
+            {
+                SoundService.Play(SoundKind.Clack);
+                task.IsEditing = false;
+                RefreshTasks();
+                return true;
+            }
+            else
+            {
+                StatusMessage = _obsidianService.StatusMessage;
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"SaveEditTaskAsync error: {ex.Message}");
+            StatusMessage = _obsidianService.StatusMessage;
+        }
+
+        return false;
+    }
+
+    public void CancelEditTask(ObsidianTask? task)
+    {
+        if (task == null) return;
+        task.EditText = task.Text;
+        task.IsEditing = false;
     }
 }

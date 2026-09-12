@@ -24,4 +24,21 @@ public class ObsidianTask : ViewModelBase
         get => _isCompleted;
         set => SetProperty(ref _isCompleted, value);
     }
+
+    public TimeSpan? DueTime { get; set; }
+
+    private bool _isEditing;
+    private string _editText = string.Empty;
+
+    public bool IsEditing
+    {
+        get => _isEditing;
+        set => SetProperty(ref _isEditing, value);
+    }
+
+    public string EditText
+    {
+        get => _editText;
+        set => SetProperty(ref _editText, value);
+    }
 }

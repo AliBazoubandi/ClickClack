@@ -100,6 +100,32 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <!-- Edit Task Button Style -->
+        <Style x:Key="PaperEditTaskButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Foreground" Value="#43261b"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Padding" Value="5,2"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="2" Padding="{TemplateBinding Padding}">
+                            <TextBlock Text="✎" FontFamily="Segoe UI Symbol, Consolas, Arial, sans-serif"
+                                       Foreground="{TemplateBinding Foreground}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Foreground" Value="#823c28"/>
+                                <Setter TargetName="Bd" Property="Background" Value="#22823c28"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <Grid Margin="10">
@@ -119,13 +145,121 @@
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <!-- Paper Header -->
-                    <Grid Grid.Row="0" Margin="0,0,0,12" Background="Transparent" MouseLeftButtonDown="Header_MouseLeftButtonDown">
-                        <TextBlock Text="TODAY'S TASKS" 
-                                   FontFamily="{StaticResource AppFontFamily}"
-                                   FontSize="14" FontWeight="Bold" 
-                                   Foreground="#43261b"
-                                   TextDecorations="Underline"/>
+                    <!-- Paper Header: Day Navigation -->
+                    <Grid Grid.Row="0" Margin="0,0,40,12" Background="Transparent" MouseLeftButtonDown="Header_MouseLeftButtonDown">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Prev Day -->
+                        <Button Grid.Column="0"
+                                Command="{Binding PrevDayCommand}"
+                                IsEnabled="{Binding CanGoPrev}"
+                                Content="◀"
+                                FontFamily="Consolas, Arial, sans-serif"
+                                FontSize="12"
+                                Foreground="#43261b"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Cursor="Hand"
+                                Padding="4,2"
+                                ToolTip="Previous day"
+                                VerticalAlignment="Center">
+                            <Button.Style>
+                                <Style TargetType="Button">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border Background="Transparent" x:Name="Bd" Padding="{TemplateBinding Padding}">
+                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="Bd" Property="Background" Value="#15000000"/>
+                                                    </Trigger>
+                                                    <Trigger Property="IsEnabled" Value="False">
+                                                        <Setter Property="Opacity" Value="0.25"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+
+                        <!-- Day Label / Today Button -->
+                        <Button Grid.Column="1"
+                                Command="{Binding TodayCommand}"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Cursor="Hand"
+                                ToolTip="Click to return to Today"
+                                VerticalAlignment="Center"
+                                Margin="4,0">
+                            <Button.Style>
+                                <Style TargetType="Button">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border Background="Transparent" x:Name="Bd">
+                                                    <ContentPresenter/>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="Bd" Property="Opacity" Value="0.75"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </Button.Style>
+                            <TextBlock Text="{Binding DayLabel}" 
+                                       FontFamily="{StaticResource AppFontFamily}"
+                                       FontSize="14" FontWeight="Bold" 
+                                       Foreground="#43261b"
+                                       TextDecorations="Underline"/>
+                        </Button>
+
+                        <!-- Next Day -->
+                        <Button Grid.Column="2"
+                                Command="{Binding NextDayCommand}"
+                                IsEnabled="{Binding CanGoNext}"
+                                Content="▶"
+                                FontFamily="Consolas, Arial, sans-serif"
+                                FontSize="12"
+                                Foreground="#43261b"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Cursor="Hand"
+                                Padding="4,2"
+                                ToolTip="Next day"
+                                VerticalAlignment="Center">
+                            <Button.Style>
+                                <Style TargetType="Button">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border Background="Transparent" x:Name="Bd" Padding="{TemplateBinding Padding}">
+                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="Bd" Property="Background" Value="#15000000"/>
+                                                    </Trigger>
+                                                    <Trigger Property="IsEnabled" Value="False">
+                                                        <Setter Property="Opacity" Value="0.25"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </Button.Style>
+                        </Button>
                     </Grid>
 
                     <!-- Scrollable Tasks Area -->
@@ -151,10 +285,12 @@
                                                     <ColumnDefinition Width="Auto"/>
                                                 </Grid.ColumnDefinitions>
 
-                                                <!-- Clickable Row -->
+                                                <!-- Clickable Row (Shown when not editing) -->
                                                 <Button Style="{StaticResource PaperTaskRowButtonStyle}"
                                                         Command="{Binding DataContext.ToggleTaskCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                         CommandParameter="{Binding}"
+                                                        Visibility="{Binding IsEditing, Converter={StaticResource InverseBoolToVis}}"
+                                                        MouseDoubleClick="TaskRow_MouseDoubleClick"
                                                         Grid.Column="0">
                                                     <Grid>
                                                         <Grid.ColumnDefinitions>
@@ -204,17 +340,57 @@
                                                     </Grid>
                                                 </Button>
 
-                                                <!-- Delete Button on Hover -->
-                                                <Button x:Name="DelBtn"
-                                                        Style="{StaticResource PaperDeleteTaskButtonStyle}"
-                                                        Command="{Binding DataContext.DeleteTaskCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                        CommandParameter="{Binding}"
-                                                        ToolTip="Delete task"
-                                                        Grid.Column="1" Margin="4,0,0,0" VerticalAlignment="Center"
-                                                        Opacity="0" IsHitTestVisible="False"/>
+                                                <!-- Inline Edit Row (Shown when IsEditing is true) -->
+                                                <Grid Grid.Column="0" Visibility="{Binding IsEditing, Converter={StaticResource BoolToVis}}" Margin="2,1,2,1">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border Width="16" Height="16" 
+                                                            Background="#f5eedc" BorderBrush="#43261b" BorderThickness="1.5"
+                                                            CornerRadius="2" Margin="0,0,8,0" VerticalAlignment="Center"
+                                                            Grid.Column="0">
+                                                        <TextBlock Text="✓" FontSize="12" FontWeight="Bold"
+                                                                   Foreground="#1d4a42" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                                   Margin="0,-3,0,0"
+                                                                   Visibility="{Binding IsCompleted, Converter={StaticResource BoolToVis}}"/>
+                                                    </Border>
+                                                    <TextBox Text="{Binding EditText, UpdateSourceTrigger=PropertyChanged}"
+                                                             FontFamily="{StaticResource AppFontFamily}"
+                                                             FontSize="12" Foreground="#2d1c16" CaretBrush="#43261b"
+                                                             Background="Transparent"
+                                                             BorderThickness="0,0,0,1.5" BorderBrush="#823c28"
+                                                             Padding="2,1,2,2" VerticalAlignment="Center"
+                                                             Grid.Column="1"
+                                                             FlowDirection="{Binding EditText, Converter={StaticResource TextToFlowDirectionConverter}}"
+                                                             Loaded="EditTaskInput_Loaded"
+                                                             KeyDown="EditTaskInput_KeyDown"
+                                                             LostFocus="EditTaskInput_LostFocus"/>
+                                                </Grid>
+
+                                                <!-- Action Buttons (✎ Edit & ✕ Delete) on Hover -->
+                                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="4,0,0,0">
+                                                    <!-- Edit Task Button (✎) -->
+                                                    <Button x:Name="EditBtn"
+                                                            Style="{StaticResource PaperEditTaskButtonStyle}"
+                                                            Command="{Binding DataContext.StartEditTaskCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                            CommandParameter="{Binding}"
+                                                            ToolTip="Edit task (or double-click text)"
+                                                            Opacity="0" IsHitTestVisible="False"/>
+
+                                                    <!-- Delete Button on Hover -->
+                                                    <Button x:Name="DelBtn"
+                                                            Style="{StaticResource PaperDeleteTaskButtonStyle}"
+                                                            Command="{Binding DataContext.DeleteTaskCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                            CommandParameter="{Binding}"
+                                                            ToolTip="Delete task"
+                                                            Opacity="0" IsHitTestVisible="False"/>
+                                                </StackPanel>
                                             </Grid>
                                             <DataTemplate.Triggers>
                                                 <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="EditBtn" Property="Opacity" Value="1"/>
+                                                    <Setter TargetName="EditBtn" Property="IsHitTestVisible" Value="True"/>
                                                     <Setter TargetName="DelBtn" Property="Opacity" Value="1"/>
                                                     <Setter TargetName="DelBtn" Property="IsHitTestVisible" Value="True"/>
                                                 </Trigger>
@@ -250,6 +426,31 @@
                                             <ControlTemplate.Triggers>
                                                 <Trigger Property="IsMouseOver" Value="True">
                                                     <Setter TargetName="AddBd" Property="Background" Value="#124a2e24"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Button.Template>
+                                </Button>
+
+                                <!-- Rollover Button: Visible when CanRollover is true -->
+                                <Button x:Name="RolloverBtn"
+                                        Command="{Binding RolloverCommand}"
+                                        Visibility="{Binding CanRollover, Converter={StaticResource BoolToVis}}"
+                                        HorizontalAlignment="Left"
+                                        Background="Transparent" BorderThickness="0"
+                                        Cursor="Hand" Margin="0,0,0,4"
+                                        ToolTip="Import uncompleted tasks from yesterday">
+                                    <Button.Template>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border x:Name="RollBd" Background="Transparent" CornerRadius="3" Padding="4,3">
+                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                    <TextBlock Text="↺" FontFamily="Consolas, Arial, sans-serif" FontSize="13" FontWeight="Bold" Foreground="#823c28" Margin="2,0,6,0" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="Roll over yesterday's tasks" FontFamily="{StaticResource AppFontFamily}" FontSize="11" Foreground="#823c28" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                                </StackPanel>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="RollBd" Property="Background" Value="#124a2e24"/>
                                                 </Trigger>
                                             </ControlTemplate.Triggers>
                                         </ControlTemplate>

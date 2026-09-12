@@ -16,4 +16,8 @@ public class AppConfig
     public double? PaperWindowTop { get; set; }
     public double? PaperWindowWidth { get; set; } = 380;
     public double? PaperWindowHeight { get; set; } = 520;
+    public bool RolloverEnabled { get; set; } = true;
+    public bool RemindersEnabled { get; set; } = true;
+    public int ReminderMinutesBefore { get; set; } = 10;
+    public bool SoundEnabled { get; set; } = true;
 }

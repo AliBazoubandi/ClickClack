@@ -54,6 +54,23 @@ public class TrayService : IDisposable
         {
             _showAction();
         };
+
+        _notifyIcon.BalloonTipClicked += (s, e) =>
+        {
+            _openPaperAction?.Invoke();
+        };
+    }
+
+    public void ShowReminder(string title, string text)
+    {
+        try
+        {
+            _notifyIcon.ShowBalloonTip(5000, title, text, ToolTipIcon.Info);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to show balloon tip: {ex.Message}");
+        }
     }
 
     private void LoadIcon()

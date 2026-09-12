@@ -16,6 +16,10 @@ public class SettingsViewModel : ViewModelBase
     private string _dailyNotesFolder;
     private string _dailyNoteDateFormat;
     private bool _startWithWindows;
+    private bool _rolloverEnabled;
+    private bool _remindersEnabled;
+    private int _reminderMinutesBefore;
+    private bool _soundEnabled;
 
     public SettingsViewModel(
         ConfigService configService,
@@ -34,6 +38,10 @@ public class SettingsViewModel : ViewModelBase
             ? DateFormatHelper.DefaultDateFormat
             : config.DailyNoteDateFormat;
         _startWithWindows = config.StartWithWindows || StartupService.IsStartupEnabled();
+        _rolloverEnabled = config.RolloverEnabled;
+        _remindersEnabled = config.RemindersEnabled;
+        _reminderMinutesBefore = Math.Clamp(config.ReminderMinutesBefore, 0, 120);
+        _soundEnabled = config.SoundEnabled;
 
         BrowseVaultCommand = new RelayCommand(OnBrowseVault);
         SaveCommand = new RelayCommand(OnSave);
@@ -44,6 +52,30 @@ public class SettingsViewModel : ViewModelBase
     {
         get => _startWithWindows;
         set => SetProperty(ref _startWithWindows, value);
+    }
+
+    public bool RolloverEnabled
+    {
+        get => _rolloverEnabled;
+        set => SetProperty(ref _rolloverEnabled, value);
+    }
+
+    public bool RemindersEnabled
+    {
+        get => _remindersEnabled;
+        set => SetProperty(ref _remindersEnabled, value);
+    }
+
+    public int ReminderMinutesBefore
+    {
+        get => _reminderMinutesBefore;
+        set => SetProperty(ref _reminderMinutesBefore, Math.Clamp(value, 0, 120));
+    }
+
+    public bool SoundEnabled
+    {
+        get => _soundEnabled;
+        set => SetProperty(ref _soundEnabled, value);
     }
 
     public string VaultPath
@@ -108,6 +140,11 @@ public class SettingsViewModel : ViewModelBase
 
     private void OnSave()
     {
+        if (_reminderMinutesBefore < 0 || _reminderMinutesBefore > 120)
+        {
+            return;
+        }
+
         _config.ObsidianVaultPath = string.IsNullOrWhiteSpace(_vaultPath) ? null : _vaultPath.Trim();
         _config.DailyNotesFolder = string.IsNullOrWhiteSpace(_dailyNotesFolder) ? "Task-Manager" : _dailyNotesFolder.Trim();
 
@@ -138,6 +175,12 @@ public class SettingsViewModel : ViewModelBase
         }
 
         _config.StartWithWindows = _startWithWindows;
+        _config.RolloverEnabled = _rolloverEnabled;
+        _config.RemindersEnabled = _remindersEnabled;
+        _config.ReminderMinutesBefore = Math.Clamp(_reminderMinutesBefore, 0, 120);
+        _config.SoundEnabled = _soundEnabled;
+        SoundService.Enabled = _soundEnabled;
+
         _configService.Save(_config);
         _obsidianService.SetupWatcher();
 

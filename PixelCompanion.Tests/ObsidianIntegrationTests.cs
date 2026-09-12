@@ -554,4 +554,394 @@ public class ObsidianIntegrationTests
             }
         }
     }
+
+    [TestMethod]
+    public void ObsidianTaskParser_BuildUpdatedTextLine_PreservesIndentAndMarker()
+    {
+        var parser = new ObsidianTaskParser();
+        var task = new ObsidianTask
+        {
+            RawLine = "  * [ ] remind me to go to meeting @16:30",
+            Indent = "  ",
+            ListMarker = "*",
+            IsCompleted = false,
+            Text = "remind me to go to meeting @16:30"
+        };
+
+        string updated = parser.BuildUpdatedTextLine(task, "new meeting @17:45");
+        Assert.AreEqual("  * [ ] new meeting @17:45", updated);
+
+        task.IsCompleted = true;
+        task.RawLine = "  * [x] remind me to go to meeting @16:30";
+        string updatedCompleted = parser.BuildUpdatedTextLine(task, "new meeting @17:45");
+        Assert.AreEqual("  * [x] new meeting @17:45", updatedCompleted);
+    }
+
+    [TestMethod]
+    public async Task ObsidianService_UpdateTaskTextAsync_UpdatesFileContentAndRecalculatesDueTime()
+    {
+        var tempVault = Path.Combine(Path.GetTempPath(), "UpdateTaskVault_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var configService = new ConfigService();
+            var config = new AppConfig
+            {
+                ObsidianVaultPath = tempVault,
+                DailyNotesFolder = "Task-Manager",
+                DailyNoteDateFormat = "yyyy-MM-dd"
+            };
+
+            using var obsidianService = new ObsidianService(configService, config);
+            var notePath = obsidianService.EnsureDailyNoteFileExists();
+            Assert.IsNotNull(notePath);
+
+            // Add original task with due time @16:30
+            await obsidianService.AddTaskAsync("remind me to go to meeting @16:30");
+            var tasks = obsidianService.GetTodayTasks();
+            Assert.HasCount(1, tasks);
+            var task = tasks[0];
+            Assert.AreEqual(new TimeSpan(16, 30, 0), task.DueTime);
+
+            // Update to new meeting @17:45
+            bool updateResult = await obsidianService.UpdateTaskTextAsync(task, "new meeting @17:45");
+            Assert.IsTrue(updateResult);
+
+            // Verify task object in memory updated
+            Assert.AreEqual("new meeting @17:45", task.Text);
+            Assert.AreEqual(new TimeSpan(17, 45, 0), task.DueTime);
+
+            // Verify persisted markdown content
+            string fileContent = await File.ReadAllTextAsync(notePath);
+            StringAssert.Contains(fileContent, "- [ ] new meeting @17:45");
+            Assert.DoesNotContain("16:30", fileContent);
+
+            // Update again to remove due time
+            bool updateNoTime = await obsidianService.UpdateTaskTextAsync(task, "just a regular meeting");
+            Assert.IsTrue(updateNoTime);
+            Assert.IsNull(task.DueTime);
+            Assert.AreEqual("just a regular meeting", task.Text);
+        }
+        finally
+        {
+            if (Directory.Exists(tempVault))
+            {
+                try { Directory.Delete(tempVault, true); } catch { }
+            }
+        }
+    }
+
+    [TestMethod]
+    public async Task CompanionViewModel_InlineEditWorkflow_SavesAndCancelsCorrectly()
+    {
+        var tempVault = Path.Combine(Path.GetTempPath(), "VmEditVault_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var configService = new ConfigService();
+            var config = new AppConfig
+            {
+                ObsidianVaultPath = tempVault,
+                DailyNotesFolder = "Task-Manager",
+                DailyNoteDateFormat = "yyyy-MM-dd"
+            };
+
+            using var obsidianService = new ObsidianService(configService, config);
+            obsidianService.EnsureDailyNoteFileExists();
+            var viewModel = new CompanionViewModel(configService, obsidianService, config);
+
+            await obsidianService.AddTaskAsync("remind me to go to meeting @16:30");
+            var tasks = obsidianService.GetTodayTasks();
+            Assert.HasCount(1, tasks);
+            var task = tasks[0];
+
+            // 1. Start Edit
+            viewModel.StartEditTask(task);
+            Assert.IsTrue(task.IsEditing);
+            Assert.AreEqual("remind me to go to meeting @16:30", task.EditText);
+
+            // 2. Cancel Edit
+            task.EditText = "some unfinished draft";
+            viewModel.CancelEditTask(task);
+            Assert.IsFalse(task.IsEditing);
+            Assert.AreEqual("remind me to go to meeting @16:30", task.Text);
+            Assert.AreEqual("remind me to go to meeting @16:30", task.EditText);
+
+            // 3. Start Edit and Save
+            viewModel.StartEditTask(task);
+            task.EditText = "new meeting @17:45";
+            bool saved = await viewModel.SaveEditTaskAsync(task);
+            Assert.IsTrue(saved);
+            Assert.IsFalse(task.IsEditing);
+
+            var updatedTasks = obsidianService.GetTodayTasks();
+            Assert.HasCount(1, updatedTasks);
+            Assert.AreEqual("new meeting @17:45", updatedTasks[0].Text);
+            Assert.AreEqual(new TimeSpan(17, 45, 0), updatedTasks[0].DueTime);
+        }
+        finally
+        {
+            if (Directory.Exists(tempVault))
+            {
+                try { Directory.Delete(tempVault, true); } catch { }
+            }
+        }
+    }
+
+    [TestMethod]
+    public async Task ObsidianService_UpdateTaskTextAsync_UpdatesRawLine_SubsequentToggleHitsSameLine()
+    {
+        var tempVault = Path.Combine(Path.GetTempPath(), "ToggleAfterEditVault_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var configService = new ConfigService();
+            var config = new AppConfig
+            {
+                ObsidianVaultPath = tempVault,
+                DailyNotesFolder = "Task-Manager",
+                DailyNoteDateFormat = "yyyy-MM-dd"
+            };
+
+            using var obsidianService = new ObsidianService(configService, config);
+            var notePath = obsidianService.EnsureDailyNoteFileExists();
+            Assert.IsNotNull(notePath);
+
+            await obsidianService.AddTaskAsync("First task");
+            await obsidianService.AddTaskAsync("Second task @10:00");
+            await obsidianService.AddTaskAsync("Third task");
+
+            var tasks = obsidianService.GetTodayTasks();
+            Assert.HasCount(3, tasks);
+            var task2 = tasks[1];
+            Assert.AreEqual("Second task @10:00", task2.Text);
+
+            // Edit Task 2
+            bool editResult = await obsidianService.UpdateTaskTextAsync(task2, "Renamed second task @11:00");
+            Assert.IsTrue(editResult);
+            Assert.AreEqual("Renamed second task @11:00", task2.Text);
+            Assert.AreEqual("- [ ] Renamed second task @11:00", task2.RawLine);
+
+            // Subsequent toggle on task2 hits the same line via ResolveTargetIndex
+            bool toggleResult = await obsidianService.SetTaskCompletionAsync(task2, true);
+            Assert.IsTrue(toggleResult);
+            Assert.IsTrue(task2.IsCompleted);
+
+            // Verify file content has task2 completed and tasks 1 & 3 untouched
+            string fileContent = await File.ReadAllTextAsync(notePath);
+            StringAssert.Contains(fileContent, "- [ ] First task");
+            StringAssert.Contains(fileContent, "- [x] Renamed second task @11:00");
+            StringAssert.Contains(fileContent, "- [ ] Third task");
+        }
+        finally
+        {
+            if (Directory.Exists(tempVault))
+            {
+                try { Directory.Delete(tempVault, true); } catch { }
+            }
+        }
+    }
+
+    [TestMethod]
+    public async Task ObsidianService_UpdateTaskTextAsync_RecomputesDueTime_WhenAlarmAddedRemovedChanged()
+    {
+        var tempVault = Path.Combine(Path.GetTempPath(), "DueTimeRecomputeVault_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var configService = new ConfigService();
+            var config = new AppConfig
+            {
+                ObsidianVaultPath = tempVault,
+                DailyNotesFolder = "Task-Manager",
+                DailyNoteDateFormat = "yyyy-MM-dd"
+            };
+
+            using var obsidianService = new ObsidianService(configService, config);
+            var notePath = obsidianService.EnsureDailyNoteFileExists();
+            Assert.IsNotNull(notePath);
+
+            await obsidianService.AddTaskAsync("Meeting with team");
+            var tasks = obsidianService.GetTodayTasks();
+            var task = tasks[0];
+            Assert.IsNull(task.DueTime);
+
+            // 1. Add ⏰
+            await obsidianService.UpdateTaskTextAsync(task, "Meeting with team ⏰ 14:15");
+            Assert.AreEqual(new TimeSpan(14, 15, 0), task.DueTime);
+
+            // 2. Change ⏰
+            await obsidianService.UpdateTaskTextAsync(task, "Meeting with team ⏰ 16:30");
+            Assert.AreEqual(new TimeSpan(16, 30, 0), task.DueTime);
+
+            // 3. Change to @
+            await obsidianService.UpdateTaskTextAsync(task, "Meeting with team @18:00");
+            Assert.AreEqual(new TimeSpan(18, 0, 0), task.DueTime);
+
+            // 4. Remove due time
+            await obsidianService.UpdateTaskTextAsync(task, "Meeting with team finished");
+            Assert.IsNull(task.DueTime);
+        }
+        finally
+        {
+            if (Directory.Exists(tempVault))
+            {
+                try { Directory.Delete(tempVault, true); } catch { }
+            }
+        }
+    }
+
+    [TestMethod]
+    public async Task ObsidianService_UpdateTaskTextAsync_EmptyOrWhitespaceEdit_RejectedWithoutTouchingFile()
+    {
+        var tempVault = Path.Combine(Path.GetTempPath(), "EmptyEditVault_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var configService = new ConfigService();
+            var config = new AppConfig
+            {
+                ObsidianVaultPath = tempVault,
+                DailyNotesFolder = "Task-Manager",
+                DailyNoteDateFormat = "yyyy-MM-dd"
+            };
+
+            using var obsidianService = new ObsidianService(configService, config);
+            var notePath = obsidianService.EnsureDailyNoteFileExists();
+            Assert.IsNotNull(notePath);
+
+            await obsidianService.AddTaskAsync("Original task");
+            var tasks = obsidianService.GetTodayTasks();
+            var task = tasks[0];
+
+            string contentBefore = await File.ReadAllTextAsync(notePath);
+
+            // Empty string edit rejected
+            bool emptyResult = await obsidianService.UpdateTaskTextAsync(task, string.Empty);
+            Assert.IsFalse(emptyResult);
+
+            // Whitespace string edit rejected
+            bool whitespaceResult = await obsidianService.UpdateTaskTextAsync(task, "    ");
+            Assert.IsFalse(whitespaceResult);
+
+            // Verify task untouched
+            Assert.AreEqual("Original task", task.Text);
+
+            // Verify file content completely unchanged
+            string contentAfter = await File.ReadAllTextAsync(notePath);
+            Assert.AreEqual(contentBefore, contentAfter);
+        }
+        finally
+        {
+            if (Directory.Exists(tempVault))
+            {
+                try { Directory.Delete(tempVault, true); } catch { }
+            }
+        }
+    }
+
+    [TestMethod]
+    public async Task ObsidianService_UpdateTaskTextAsync_OnPastDate_WritesThatDateFileOnly()
+    {
+        var tempVault = Path.Combine(Path.GetTempPath(), "PastDateEditVault_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var configService = new ConfigService();
+            var config = new AppConfig
+            {
+                ObsidianVaultPath = tempVault,
+                DailyNotesFolder = "Task-Manager",
+                DailyNoteDateFormat = "yyyy-MM-dd"
+            };
+
+            using var obsidianService = new ObsidianService(configService, config);
+            var todayPath = obsidianService.EnsureDailyNoteFileExists(DateTime.Today);
+            Assert.IsNotNull(todayPath);
+            await obsidianService.AddTaskAsync("Today task", DateTime.Today);
+
+            DateTime yesterday = DateTime.Today.AddDays(-1);
+            var yesterdayPath = obsidianService.EnsureDailyNoteFileExists(yesterday);
+            Assert.IsNotNull(yesterdayPath);
+            await obsidianService.AddTaskAsync("Yesterday task @09:00", yesterday);
+
+            var yesterdayTasks = obsidianService.GetTasksForDate(yesterday);
+            Assert.HasCount(1, yesterdayTasks);
+            var yesterdayTask = yesterdayTasks[0];
+
+            // Edit yesterday's task on past date
+            bool updateResult = await obsidianService.UpdateTaskTextAsync(yesterdayTask, "Yesterday revised task @10:30", yesterday);
+            Assert.IsTrue(updateResult);
+
+            // Verify yesterday's file has updated text
+            string yesterdayContent = await File.ReadAllTextAsync(yesterdayPath);
+            StringAssert.Contains(yesterdayContent, "Yesterday revised task @10:30");
+            Assert.DoesNotContain("Yesterday task @09:00", yesterdayContent);
+
+            // Verify today's file was NOT modified and still contains today task
+            string todayContent = await File.ReadAllTextAsync(todayPath);
+            StringAssert.Contains(todayContent, "Today task");
+            Assert.DoesNotContain("Yesterday", todayContent);
+        }
+        finally
+        {
+            if (Directory.Exists(tempVault))
+            {
+                try { Directory.Delete(tempVault, true); } catch { }
+            }
+        }
+    }
+
+    [TestMethod]
+    public async Task ObsidianService_UpdateTaskTextAsync_PreservesCheckboxStateAndIndent()
+    {
+        var tempVault = Path.Combine(Path.GetTempPath(), "PreserveIndentVault_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var configService = new ConfigService();
+            var config = new AppConfig
+            {
+                ObsidianVaultPath = tempVault,
+                DailyNotesFolder = "Task-Manager",
+                DailyNoteDateFormat = "yyyy-MM-dd"
+            };
+
+            using var obsidianService = new ObsidianService(configService, config);
+            var notePath = obsidianService.EnsureDailyNoteFileExists();
+            Assert.IsNotNull(notePath);
+
+            // Write custom indented completed and uncompleted tasks
+            await File.WriteAllTextAsync(notePath, "# Notes\n\n  * [x] Completed indented item\n    - [ ] Nested open item\n");
+
+            var tasks = obsidianService.GetTodayTasks();
+            Assert.HasCount(2, tasks);
+
+            var completedTask = tasks[0];
+            Assert.IsTrue(completedTask.IsCompleted);
+            Assert.AreEqual("  ", completedTask.Indent);
+            Assert.AreEqual("*", completedTask.ListMarker);
+
+            // Edit completed indented item
+            bool edit1 = await obsidianService.UpdateTaskTextAsync(completedTask, "Updated completed item");
+            Assert.IsTrue(edit1);
+            Assert.IsTrue(completedTask.IsCompleted);
+            Assert.AreEqual("  * [x] Updated completed item", completedTask.RawLine);
+
+            var nestedTask = tasks[1];
+            Assert.IsFalse(nestedTask.IsCompleted);
+            Assert.AreEqual("    ", nestedTask.Indent);
+            Assert.AreEqual("-", nestedTask.ListMarker);
+
+            // Edit nested open item
+            bool edit2 = await obsidianService.UpdateTaskTextAsync(nestedTask, "Updated nested open item");
+            Assert.IsTrue(edit2);
+            Assert.IsFalse(nestedTask.IsCompleted);
+            Assert.AreEqual("    - [ ] Updated nested open item", nestedTask.RawLine);
+
+            string fileContent = await File.ReadAllTextAsync(notePath);
+            StringAssert.Contains(fileContent, "  * [x] Updated completed item");
+            StringAssert.Contains(fileContent, "    - [ ] Updated nested open item");
+        }
+        finally
+        {
+            if (Directory.Exists(tempVault))
+            {
+                try { Directory.Delete(tempVault, true); } catch { }
+            }
+        }
+    }
 }
