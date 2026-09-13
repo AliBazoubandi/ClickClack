@@ -46,9 +46,39 @@ def extract_clean_sprite(input_path, output_path, is_typewriter=True):
     else:
         cropped = clean_img
 
-    cropped.save(output_path, format="PNG")
-    print(f"Extracted {os.path.basename(input_path)} -> {output_path} (size={cropped.size})")
-    return cropped
+    if not is_typewriter:
+        # Normalize pet sprites to consistent 256x256 canvas with bottom baseline alignment
+        cw, ch = cropped.size
+        # Group 2 (lower-res exports in assets: wave, eating, etc.) scaled so Inky's body matches Group 1
+        group2_names = {
+            'pet - eating.jpg', 'pet - eating2.jpg', 'pet - reading.jpg', 'pet - screen.jpg', 
+            'pet - shocked.jpg', 'pet - sneak.jpg', 'pet - thinking.jpg', 'pet - wave.jpg'
+        }
+        target_body = 200.0
+        scale_g1 = target_body / 446.0
+        scale_g2 = target_body / 352.0
+
+        src_base = os.path.basename(input_path)
+        scale = scale_g2 if src_base in group2_names else scale_g1
+
+        nw = int(round(cw * scale))
+        nh = int(round(ch * scale))
+        resample = getattr(Image, 'Resampling', Image).LANCZOS
+        scaled = cropped.resize((nw, nh), resample=resample)
+
+        CANVAS_W, CANVAS_H = 256, 256
+        BOTTOM_MARGIN = 16
+        canvas = Image.new('RGBA', (CANVAS_W, CANVAS_H), (0, 0, 0, 0))
+        x = (CANVAS_W - nw) // 2
+        y = CANVAS_H - BOTTOM_MARGIN - nh
+        canvas.paste(scaled, (x, y), scaled)
+        final_img = canvas
+    else:
+        final_img = cropped
+
+    final_img.save(output_path, format="PNG")
+    print(f"Extracted {os.path.basename(input_path)} -> {output_path} (size={final_img.size})")
+    return final_img
 
 def main():
     src_dir = r"e:\task manager\assets"
@@ -77,14 +107,27 @@ def main():
         if os.path.exists(src_path):
             tw_images[dest_name] = extract_clean_sprite(src_path, dest_path, is_typewriter=True)
 
-    # 2. Pet Assets Mapping
+    # 2. Pet Assets Mapping (all poses, normalized to 256x256, diging -> digging)
     pet_mapping = {
         "pet - idle.jpg": "idle.png",
         "pet - idle2.jpg": "idle2.png",
+        "pet - celebrate.jpg": "celebrate.png",
         "pet - curious.jpg": "curious.png",
+        "pet - diging.jpg": "digging.png",
+        "pet - eating.jpg": "eating.png",
+        "pet - eating2.jpg": "eating2.png",
+        "pet - flower.jpg": "flower.png",
         "pet - happy.jpg": "happy.png",
+        "pet - hiding.jpg": "hiding.png",
+        "pet - reading.jpg": "reading.png",
+        "pet - screen.jpg": "screen.png",
+        "pet - shocked.jpg": "shocked.png",
         "pet - sleep.jpg": "sleep.png",
-        "pet - celebrate.jpg": "celebrate.png"
+        "pet - sneak.jpg": "sneak.png",
+        "pet - studying.jpg": "studying.png",
+        "pet - teatime.jpg": "teatime.png",
+        "pet - thinking.jpg": "thinking.png",
+        "pet - wave.jpg": "wave.png"
     }
 
     pet_images = {}
@@ -95,7 +138,7 @@ def main():
             pet_images[dest_name] = extract_clean_sprite(src_path, dest_path, is_typewriter=False)
 
     # 3. Create updated app.ico with real artwork from icon-simple.jpg
-    icon_simple_path = os.path.join(ASSETS_DIR, "icon-simple.jpg")
+    icon_simple_path = os.path.join(src_dir, "icon-simple.jpg")
     if os.path.exists(icon_simple_path):
         icon_img = Image.open(icon_simple_path).convert("RGBA")
         icon_path = os.path.join(dest_icon, "app.ico")

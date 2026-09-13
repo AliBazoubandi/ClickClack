@@ -1,3 +1,4 @@
+<!-- Scaling rule: RenderOptions.BitmapScalingMode="HighQuality" where display size < source asset size (prevents downscale aliasing); NearestNeighbor where display size >= source. -->
 <Window x:Class="PixelCompanion.Views.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -20,6 +21,7 @@
         UseLayoutRounding="True"
         RenderOptions.BitmapScalingMode="NearestNeighbor"
         RenderOptions.EdgeMode="Aliased"
+        TextOptions.TextFormattingMode="Display"
         MouseLeftButtonDown="Window_MouseLeftButtonDown"
         MouseMove="Window_MouseMove"
         MouseLeftButtonUp="Window_MouseLeftButtonUp">
@@ -176,7 +178,9 @@
                         Width="225" Height="285"
                         Canvas.Left="45" Canvas.Top="10"
                         CornerRadius="2"
-                        ClipToBounds="True">
+                        ClipToBounds="True"
+                        RenderOptions.BitmapScalingMode="HighQuality"
+                        CacheMode="BitmapCache">
                     <Border.Background>
                         <ImageBrush ImageSource="pack://application:,,,/ClickClack;component/Assets/Typewriter/paper_sheet.png" Stretch="Fill"/>
                     </Border.Background>
@@ -503,8 +507,8 @@
                        Source="{Binding TypewriterImage}"
                        Width="285"
                        Canvas.Left="15" Canvas.Bottom="10"
-                       RenderOptions.BitmapScalingMode="NearestNeighbor"
-                       RenderOptions.EdgeMode="Aliased"
+                       RenderOptions.BitmapScalingMode="HighQuality"
+                       CacheMode="BitmapCache"
                        Cursor="Hand"
                        ToolTip="Click typewriter to extend/retract paper!"
                        MouseLeftButtonDown="Typewriter_MouseLeftButtonDown">
@@ -513,17 +517,38 @@
                     </Image.Effect>
                 </Image>
 
+                <!-- Pet Companion ("Inky") - Previous frame during state crossfade -->
+                <Image x:Name="PrevCompanionSprite"
+                       Panel.ZIndex="2"
+                       Source="{Binding PrevCompanionImage}"
+                       Width="130"
+                       Canvas.Right="40" Canvas.Bottom="10"
+                       RenderOptions.BitmapScalingMode="HighQuality"
+                       CacheMode="BitmapCache"
+                       Opacity="0"
+                       IsHitTestVisible="False">
+                    <Image.RenderTransform>
+                        <TranslateTransform x:Name="PrevCompanionBobTransform" X="0" Y="0"/>
+                    </Image.RenderTransform>
+                    <Image.Effect>
+                        <DropShadowEffect BlurRadius="6" ShadowDepth="2" Opacity="0.3" Color="#0a0c10"/>
+                    </Image.Effect>
+                </Image>
+
                 <!-- Pet Companion ("Inky") -->
                 <Image x:Name="CompanionSprite"
-                       Panel.ZIndex="2"
+                       Panel.ZIndex="3"
                        Source="{Binding CompanionImage}"
                        Width="130"
                        Canvas.Right="40" Canvas.Bottom="10"
-                       RenderOptions.BitmapScalingMode="NearestNeighbor"
-                       RenderOptions.EdgeMode="Aliased"
+                       RenderOptions.BitmapScalingMode="HighQuality"
+                       CacheMode="BitmapCache"
                        Cursor="Hand"
                        ToolTip="Inky (Click to pet!)"
                        MouseLeftButtonDown="Companion_MouseLeftButtonDown">
+                    <Image.RenderTransform>
+                        <TranslateTransform x:Name="CompanionBobTransform" X="0" Y="0"/>
+                    </Image.RenderTransform>
                     <Image.Effect>
                         <DropShadowEffect BlurRadius="6" ShadowDepth="2" Opacity="0.3" Color="#0a0c10"/>
                     </Image.Effect>

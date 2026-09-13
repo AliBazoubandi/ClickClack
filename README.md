@@ -36,8 +36,14 @@ ClickClack includes **due-time parsing and gentle reminders**, **automatic multi
 ## 🚀 Features
 
 ### 🐱 Inky the Companion
-- **Expressive Pixel-Art States**: Inky reacts to your actions with fluid animations including `idle`, `idle2`, `curious`, `happy`, `sleep`, and `celebrate`.
-- **Interactive Petting**: Click Inky to cheer him up and watch him celebrate!
+- **19 Expressive Pixel-Art Poses**: Inky comes alive with normalized 256×256 sprites including `idle`, `idle2`, `happy`, `celebrate`, `curious`, `reading`, `eating`, `thinking`, `wave`, `hiding`, `sneak`, `studying`, `teatime`, `flower`, `screen`, `shocked`, `digging`, and `sleep`.
+- **Natural Living Pacing**: No jittery or repetitive loops—Inky rests calmly in idle and periodically transitions between rich, varied ambient activities (reading a book, drinking tea, munching on snacks, pondering, waving, peeking) lasting 4 to 7 seconds each.
+- **Contextual Reactions**:
+  - **Task Completed**: Checking off an item makes Inky beam with joy (`happy` pose) accompanied by a cheerful pop sound.
+  - **Inactivity Sleep**: After 45 seconds of idle desktop inactivity with the typewriter closed, Inky peacefully falls asleep (`sleep` pose) and wakes up the moment you interact.
+  - **Interactive Petting**: Click Inky anytime to wake him up or cheer him on as he celebrates with a bouncy `celebrate` animation and audio cue.
+  - **Attentive Work Mode**: When the typewriter paper is extended, Inky stays awake and happily watches over your daily tasks.
+- **Buttery-Smooth Dissolve Crossfade**: Transitions between poses melt seamlessly into each other over 350ms with zero opacity dropping or 1-and-0 strobing, complemented by a continuous, gentle 3.2-second sine breathing wave.
 
 ### ⌨️ Interactive Typewriter & Paper
 - **Animated Mechanical Typewriter**: Interacting with tasks triggers animated key-strikes and typewriter platen movement.
@@ -217,7 +223,7 @@ ClickClack includes an automated test suite verifying markdown parsing, due-time
 dotnet test
 ```
 
-All 65+ unit, integration, and rendering tests in [`PixelCompanion.Tests`](PixelCompanion.Tests/) will execute and validate the system components.
+All 75+ unit, integration, and rendering tests in [`PixelCompanion.Tests`](PixelCompanion.Tests/) will execute and validate the system components.
 
 ---
 
@@ -230,8 +236,8 @@ All 65+ unit, integration, and rendering tests in [`PixelCompanion.Tests`](Pixel
 | **Services** | • [`StartupService.cs`](PixelCompanion/Services/StartupService.cs)<br>• [`ObsidianService.cs`](PixelCompanion/Services/ObsidianService.cs)<br>• [`ObsidianTaskParser.cs`](PixelCompanion/Services/ObsidianTaskParser.cs)<br>• [`ReminderService.cs`](PixelCompanion/Services/ReminderService.cs)<br>• [`SoundService.cs`](PixelCompanion/Services/SoundService.cs)<br>• [`ConfigService.cs`](PixelCompanion/Services/ConfigService.cs)<br>• [`TrayService.cs`](PixelCompanion/Services/TrayService.cs)<br>• [`DateFormatHelper.cs`](PixelCompanion/Services/DateFormatHelper.cs) | Windows boot startup registry, Obsidian file watching & atomic writes, due-time parsing & reminders, audio playback, configuration, and tray notifications. |
 | **Converters & Rules** | • [`TextToFlowDirectionConverter.cs`](PixelCompanion/Converters/TextToFlowDirectionConverter.cs)<br>• [`InverseBoolToVisibilityConverter.cs`](PixelCompanion/Converters/InverseBoolToVisibilityConverter.cs)<br>• [`ReminderMinutesValidationRule.cs`](PixelCompanion/Converters/ReminderMinutesValidationRule.cs) | Dynamic RTL/LTR text direction detection, visibility converters, and settings input validation rules. |
 | **Models** | • [`AppConfig.cs`](PixelCompanion/Models/AppConfig.cs)<br>• [`ObsidianTask.cs`](PixelCompanion/Models/ObsidianTask.cs) | Configuration schema (positions, startup, reminders, sounds, vault settings) and task models. |
-| **Assets & Audio** | • [`Mikhak-FD.ttf`](PixelCompanion/Assets/Fonts/Mikhak-FD.ttf)<br>• [`clack.wav`](PixelCompanion/Assets/Sounds/clack.wav)<br>• [`pop.wav`](PixelCompanion/Assets/Sounds/pop.wav)<br>• [`slide.wav`](PixelCompanion/Assets/Sounds/slide.wav)<br>• [`app.ico`](PixelCompanion/Assets/Icons/app.ico)<br>• [`icon-simple.jpg`](assets/icon-simple.jpg) | Embedded Persian & Latin Mikhak font, quiet synthesized audio effects, pixel character sheets, and application icons. |
-| **Test Suite** | • [`DueTimeParserTests.cs`](PixelCompanion.Tests/DueTimeParserTests.cs)<br>• [`ReminderServiceTests.cs`](PixelCompanion.Tests/ReminderServiceTests.cs)<br>• [`RolloverTests.cs`](PixelCompanion.Tests/RolloverTests.cs)<br>• [`SettingsViewModelTests.cs`](PixelCompanion.Tests/SettingsViewModelTests.cs)<br>• [`SoundServiceTests.cs`](PixelCompanion.Tests/SoundServiceTests.cs)<br>• [`WeeklyViewTests.cs`](PixelCompanion.Tests/WeeklyViewTests.cs)<br>• [`StartupServiceTests.cs`](PixelCompanion.Tests/StartupServiceTests.cs)<br>• [`TextDirectionTests.cs`](PixelCompanion.Tests/TextDirectionTests.cs)<br>• [`ObsidianIntegrationTests.cs`](PixelCompanion.Tests/ObsidianIntegrationTests.cs)<br>• [`VisualRenderTests.cs`](PixelCompanion.Tests/VisualRenderTests.cs) | MSTest test suite verifying all system subsystems and services (65+ tests). |
+| **Assets & Audio** | • [`Mikhak-FD.ttf`](PixelCompanion/Assets/Fonts/Mikhak-FD.ttf)<br>• [`clack.wav`](PixelCompanion/Assets/Sounds/clack.wav)<br>• [`pop.wav`](PixelCompanion/Assets/Sounds/pop.wav)<br>• [`slide.wav`](PixelCompanion/Assets/Sounds/slide.wav)<br>• [`app.ico`](PixelCompanion/Assets/Icons/app.ico)<br>• [`icon-simple.jpg`](assets/icon-simple.jpg) | Embedded Persian & Latin Mikhak font, quiet synthesized audio effects, 19 normalized 256×256 character sprite sheets, and application icons. |
+| **Test Suite** | • [`CompanionAnimationTests.cs`](PixelCompanion.Tests/CompanionAnimationTests.cs)<br>• [`DueTimeParserTests.cs`](PixelCompanion.Tests/DueTimeParserTests.cs)<br>• [`ReminderServiceTests.cs`](PixelCompanion.Tests/ReminderServiceTests.cs)<br>• [`RolloverTests.cs`](PixelCompanion.Tests/RolloverTests.cs)<br>• [`SettingsViewModelTests.cs`](PixelCompanion.Tests/SettingsViewModelTests.cs)<br>• [`SoundServiceTests.cs`](PixelCompanion.Tests/SoundServiceTests.cs)<br>• [`WeeklyViewTests.cs`](PixelCompanion.Tests/WeeklyViewTests.cs)<br>• [`StartupServiceTests.cs`](PixelCompanion.Tests/StartupServiceTests.cs)<br>• [`TextDirectionTests.cs`](PixelCompanion.Tests/TextDirectionTests.cs)<br>• [`ObsidianIntegrationTests.cs`](PixelCompanion.Tests/ObsidianIntegrationTests.cs)<br>• [`VisualRenderTests.cs`](PixelCompanion.Tests/VisualRenderTests.cs) | MSTest test suite verifying all system subsystems, animation states, and services (75+ tests). |
 | **Solution & Project** | • [`PixelCompanion.csproj`](PixelCompanion/PixelCompanion.csproj)<br>• [`PixelCompanion.slnx`](PixelCompanion.slnx) | Build configuration, sound & font resource inclusions, and solution setup. |
 
 ---

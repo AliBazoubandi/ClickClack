@@ -263,6 +263,37 @@ public class VisualRenderTests
             paperWindow.Close();
         });
     }
+
+    [TestMethod]
+    public void Test_ShowWindow_BringsPaperWindowForward_WhenOpen()
+    {
+        RunInSTA(() =>
+        {
+            var configService = new ConfigService();
+            var config = new AppConfig
+            {
+                ObsidianVaultPath = Path.GetTempPath()
+            };
+
+            using var obsidianService = new ObsidianService(configService, config);
+            var viewModel = new CompanionViewModel(configService, obsidianService, config);
+            var mainWindow = new MainWindow(configService, config, viewModel);
+
+            mainWindow.Show();
+            mainWindow.OpenPaperWindow();
+
+            // Hide both windows via HideWindow
+            mainWindow.HideWindow();
+            Assert.IsFalse(mainWindow.IsVisible);
+
+            // Restore via ShowWindow (e.g. from "Show ClickClack" in tray)
+            mainWindow.ShowWindow();
+            Assert.IsTrue(mainWindow.IsVisible);
+            Assert.AreEqual(WindowState.Normal, mainWindow.WindowState);
+
+            mainWindow.Close();
+        });
+    }
 }
 
 

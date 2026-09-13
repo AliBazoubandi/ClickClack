@@ -18,6 +18,9 @@
     <Resource Include="Assets\**\*.ico" />
     <Resource Include="Assets\**\*.ttf" />
     <Resource Include="Assets\**\*.wav" />
+    <Resource Remove="Assets\Typewriter\paper_extended.png" />
+    <Resource Remove="Assets\Typewriter\paper_starting.png" />
+    <Resource Remove="Assets\Typewriter\paper_retracting.png" />
   </ItemGroup>
 
   <ItemGroup>

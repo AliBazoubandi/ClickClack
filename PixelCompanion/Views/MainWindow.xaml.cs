@@ -49,11 +49,76 @@ public partial class MainWindow : Window
         _viewModel = viewModel;
         DataContext = _viewModel;
         _viewModel.ClosePaperAction = ClosePaperWindow;
+        _viewModel.PetStateCrossfadeRequested += OnPetStateCrossfadeRequested;
 
         Loaded += MainWindow_Loaded;
         Closing += MainWindow_Closing;
         LocationChanged += MainWindow_LocationChanged;
         SizeChanged += MainWindow_SizeChanged;
+        Activated += MainWindow_Activated;
+    }
+
+    private void MainWindow_Activated(object? sender, EventArgs e)
+    {
+        if (_paperWindow != null && _paperWindow.IsVisible)
+        {
+            if (_paperWindow.WindowState == WindowState.Minimized)
+            {
+                _paperWindow.WindowState = WindowState.Normal;
+            }
+        }
+    }
+
+    private void OnPetStateCrossfadeRequested()
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.BeginInvoke(OnPetStateCrossfadeRequested);
+            return;
+        }
+
+        if (PrevCompanionSprite == null || CompanionSprite == null)
+        {
+            return;
+        }
+
+        // PrevCompanionSprite stays at Opacity = 1.0 underneath as the solid visual anchor
+        PrevCompanionSprite.Opacity = 1.0;
+
+        CompanionSprite.BeginAnimation(UIElement.OpacityProperty, null);
+        CompanionSprite.Opacity = 0.0;
+
+        var duration = TimeSpan.FromMilliseconds(350);
+        var fadeIn = new System.Windows.Media.Animation.DoubleAnimation(0.0, 1.0, duration)
+        {
+            EasingFunction = new System.Windows.Media.Animation.QuadraticEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseInOut },
+            FillBehavior = System.Windows.Media.Animation.FillBehavior.HoldEnd
+        };
+
+        fadeIn.Completed += (s, e) =>
+        {
+            CompanionSprite.BeginAnimation(UIElement.OpacityProperty, null);
+            CompanionSprite.Opacity = 1.0;
+            PrevCompanionSprite.Source = CompanionSprite.Source;
+        };
+
+        CompanionSprite.BeginAnimation(UIElement.OpacityProperty, fadeIn);
+    }
+
+    private void StartBreathingAnimation()
+    {
+        var companionTrans = CompanionSprite?.RenderTransform as System.Windows.Media.TranslateTransform ?? CompanionBobTransform;
+        var prevCompanionTrans = PrevCompanionSprite?.RenderTransform as System.Windows.Media.TranslateTransform ?? PrevCompanionBobTransform;
+
+        var breathingAnim = new System.Windows.Media.Animation.DoubleAnimation(0.0, -2.5, new Duration(TimeSpan.FromSeconds(1.6)))
+        {
+            AutoReverse = true,
+            RepeatBehavior = System.Windows.Media.Animation.RepeatBehavior.Forever,
+            EasingFunction = new System.Windows.Media.Animation.SineEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseInOut }
+        };
+
+        companionTrans?.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty, breathingAnim);
+        prevCompanionTrans?.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty, breathingAnim);
     }
 
     private void MainWindow_Loaded(object sender, RoutedEventArgs e)
@@ -70,6 +135,7 @@ public partial class MainWindow : Window
         Height = bounds.Height;
 
         SaveCurrentPosition();
+        StartBreathingAnimation();
     }
 
     private void MainWindow_LocationChanged(object? sender, EventArgs e)
@@ -212,11 +278,52 @@ public partial class MainWindow : Window
         _viewModel.TypewriterClickCommand.Execute(null);
     }
 
+    private bool _wasPaperVisibleBeforeHide;
+
+    public void ShowWindow()
+    {
+        Show();
+        if (WindowState == WindowState.Minimized)
+        {
+            WindowState = WindowState.Normal;
+        }
+        Activate();
+
+        if (_paperWindow != null && (_paperWindow.IsVisible || _wasPaperVisibleBeforeHide || _viewModel.IsPaperExtended))
+        {
+            _paperWindow.Show();
+            if (_paperWindow.WindowState == WindowState.Minimized)
+            {
+                _paperWindow.WindowState = WindowState.Normal;
+            }
+            _paperWindow.Activate();
+            Activate();
+        }
+        _wasPaperVisibleBeforeHide = false;
+    }
+
+    public void HideWindow()
+    {
+        _wasPaperVisibleBeforeHide = _paperWindow != null && _paperWindow.IsVisible;
+        if (_paperWindow != null && _paperWindow.IsVisible)
+        {
+            _paperWindow.Hide();
+        }
+        Hide();
+    }
+
     public void OpenPaperWindow()
     {
         if (_paperWindow == null)
         {
-            _paperWindow = new PaperWindow(_configService, _config, _viewModel);
+            _paperWindow = new PaperWindow(_configService, _config, _viewModel)
+            {
+                Owner = this
+            };
+        }
+        else if (_paperWindow.Owner != this)
+        {
+            _paperWindow.Owner = this;
         }
         _viewModel.IsPaperExtended = true;
         _paperWindow.Show();
@@ -232,6 +339,7 @@ public partial class MainWindow : Window
             {
                 _paperWindow.Hide();
             }
+            _wasPaperVisibleBeforeHide = false;
         }
         else
         {

@@ -28,6 +28,8 @@ public partial class App : System.Windows.Application
             }
         }
 
+        CompanionViewModel.PreloadAll();
+
         _configService = new ConfigService();
         _config = _configService.Load();
         SoundService.Enabled = _config.SoundEnabled;
@@ -44,16 +46,11 @@ public partial class App : System.Windows.Application
             _config,
             showAction: () =>
             {
-                if (_mainWindow != null)
-                {
-                    _mainWindow.Show();
-                    _mainWindow.WindowState = WindowState.Normal;
-                    _mainWindow.Activate();
-                }
+                _mainWindow?.ShowWindow();
             },
             hideAction: () =>
             {
-                _mainWindow?.Hide();
+                _mainWindow?.HideWindow();
             },
             openSettingsAction: () =>
             {
